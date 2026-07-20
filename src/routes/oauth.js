@@ -188,13 +188,22 @@ async function finishOAuth(request, env, platform, url) {
 async function connectRumble(request, env) {
   const session = await requireSession(request, env);
   const body = await readJson(request);
+  const timestamp = nowIso();
+  if (body.popupConfirmed === true) {
+    await env.DB.prepare(`INSERT INTO oauth_connections
+      (id, user_id, platform, platform_user_id, platform_username, access_token, metadata_json, created_at, updated_at)
+      VALUES (?1, ?2, 'rumble', '', 'Rumble account', ?3, ?4, ?5, ?5)
+      ON CONFLICT(user_id, platform) DO UPDATE SET platform_user_id = excluded.platform_user_id, platform_username = excluded.platform_username,
+        access_token = excluded.access_token, metadata_json = excluded.metadata_json, updated_at = excluded.updated_at`)
+      .bind(randomId(), session.user_id, await encrypt('', env.TOKEN_ENCRYPTION_KEY), JSON.stringify({ connectionType: 'account-popup', dataAccess: false }), timestamp).run();
+    return json({ ok: true, platform: 'rumble', username: 'Rumble account', dataAccess: false });
+  }
   let apiUrl;
   try { apiUrl = new URL(String(body.apiUrl || '')); } catch { throw new HttpError(400, 'Enter your Rumble Live Stream API URL.', 'invalid_rumble_url'); }
   if (apiUrl.protocol !== 'https:' || apiUrl.hostname !== 'rumble.com') throw new HttpError(400, 'Only a rumble.com Live Stream API URL is accepted.', 'invalid_rumble_url');
   const response = await fetch(apiUrl.toString(), { headers: { accept: 'application/json' } });
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload || !Array.isArray(payload.livestreams)) throw new HttpError(400, 'Rumble did not recognize that Live Stream API URL.', 'invalid_rumble_url');
-  const timestamp = nowIso();
   await env.DB.prepare(`INSERT INTO oauth_connections
     (id, user_id, platform, platform_user_id, platform_username, access_token, metadata_json, created_at, updated_at)
     VALUES (?1, ?2, 'rumble', ?3, ?4, ?5, ?6, ?7, ?7)

@@ -13,6 +13,15 @@ function compactNumber(value) {
   return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(Number(value) || 0);
 }
 
+function availableNumber(...values) {
+  for (const value of values) {
+    if (value === null || value === undefined || value === '') continue;
+    const number = Number(value);
+    if (Number.isFinite(number)) return number;
+  }
+  return null;
+}
+
 function twitchThumbnail(value, width = 640, height = 360) {
   return String(value || '').replace('{width}', String(width)).replace('{height}', String(height));
 }
@@ -207,13 +216,15 @@ function normalizeYoutubeVideo(video, channel, categoryNames = new Map()) {
   const isLive = Boolean(liveDetails.actualStartTime && !liveDetails.actualEndTime);
   return {
     id: video.id,
+    channelId: video.snippet?.channelId || '',
     platform: 'youtube',
     name: video.snippet?.channelTitle || channel?.snippet?.title || '',
     username: channel?.snippet?.customUrl || video.snippet?.channelId || '',
     title: video.snippet?.title || '',
     category: categoryNames.get(video.snippet?.categoryId) || 'YouTube',
     categoryId: video.snippet?.categoryId || '',
-    viewers: Number(liveDetails.concurrentViewers || 0),
+    viewers: availableNumber(liveDetails.concurrentViewers),
+    viewerCountAvailable: liveDetails.concurrentViewers !== null && liveDetails.concurrentViewers !== undefined && liveDetails.concurrentViewers !== '',
     views: Number(video.statistics?.viewCount || 0),
     startedAt: liveDetails.actualStartTime || video.snippet?.publishedAt || '',
     durationSeconds: liveDetails.actualStartTime ? Math.floor((Date.now() - new Date(liveDetails.actualStartTime).getTime()) / 1000) : 0,
@@ -273,8 +284,32 @@ async function youtubeCategories(env, limit = 30, query = '') {
     counts.set(video.categoryId, (counts.get(video.categoryId) || 0) + video.viewers);
     if (!images.has(video.categoryId) && video.thumbnail) images.set(video.categoryId, video.thumbnail);
   }
-  return categories.map(item => ({ id: item.id, platform: 'youtube', name: item.snippet?.title || '', image: images.get(item.id) || '', watching: counts.get(item.id) || 0, followers: null, tags: [] }))
-    .sort((a, b) => b.watching - a.watching || a.name.localeCompare(b.name)).slice(0, limit);
+  return categories.map(item => {
+    const name = item.snippet?.title || '';
+    return { id: item.id, platform: 'youtube', name, image: images.get(item.id) || youtubeCategoryImage(name), watching: null, followers: null, tags: [] };
+  })
+    .sort((a, b) => a.name.localeCompare(b.name)).slice(0, limit);
+}
+
+function youtubeCategoryImage(name) {
+  const images = {
+    'film & animation': 'https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&w=570&h=760&q=80',
+    'autos & vehicles': 'https://images.unsplash.com/photo-1492144534655-ae79c964c9d7?auto=format&fit=crop&w=570&h=760&q=80',
+    music: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=570&h=760&q=80',
+    'pets & animals': 'https://images.unsplash.com/photo-1450778869180-41d0601e046e?auto=format&fit=crop&w=570&h=760&q=80',
+    sports: 'https://images.unsplash.com/photo-1461896836934-ffe607ba8211?auto=format&fit=crop&w=570&h=760&q=80',
+    'travel & events': 'https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=570&h=760&q=80',
+    gaming: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=570&h=760&q=80',
+    'people & blogs': 'https://images.unsplash.com/photo-1529156069898-49953e39b3ac?auto=format&fit=crop&w=570&h=760&q=80',
+    comedy: 'https://images.unsplash.com/photo-1527224857830-43a7acc85260?auto=format&fit=crop&w=570&h=760&q=80',
+    entertainment: 'https://images.unsplash.com/photo-1492684223066-81342ee5ff30?auto=format&fit=crop&w=570&h=760&q=80',
+    'news & politics': 'https://images.unsplash.com/photo-1504711434969-e33886168f5c?auto=format&fit=crop&w=570&h=760&q=80',
+    'howto & style': 'https://images.unsplash.com/photo-1452860606245-08befc0ff44b?auto=format&fit=crop&w=570&h=760&q=80',
+    education: 'https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=570&h=760&q=80',
+    'science & technology': 'https://images.unsplash.com/photo-1532094349884-543bc11b234d?auto=format&fit=crop&w=570&h=760&q=80',
+    'nonprofits & activism': 'https://images.unsplash.com/photo-1559027615-cd4628902d4a?auto=format&fit=crop&w=570&h=760&q=80'
+  };
+  return images[String(name || '').toLowerCase()] || 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?auto=format&fit=crop&w=570&h=760&q=80';
 }
 
 function normalizeKickLive(item) {
@@ -282,13 +317,14 @@ function normalizeKickLive(item) {
   const category = item.category || item.livestream?.category || {};
   const user = item.user || channel.user || {};
   const slug = channel.slug || item.channel_slug || item.slug || user.username || '';
+  const viewerCount = availableNumber(item.viewer_count, item.viewers, item.livestream?.viewer_count);
   return {
     id: String(item.id || item.livestream_id || slug), platform: 'kick', name: channel.name || user.username || slug, username: slug,
     title: item.stream_title || item.title || channel.stream_title || '', category: category.name || category.title || 'Live', categoryId: String(category.id || category.category_id || ''),
-    viewers: Number(item.viewer_count || item.viewers || item.livestream?.viewer_count || 0), startedAt: item.start_time || item.created_at || '',
+    viewers: viewerCount, viewerCountAvailable: viewerCount !== null, startedAt: item.start_time || item.created_at || '',
     durationSeconds: item.start_time ? Math.floor((Date.now() - new Date(item.start_time).getTime()) / 1000) : 0,
     tags: item.custom_tags || category.tags || [], thumbnail: item.thumbnail || item.thumbnail_url || channel.thumbnail || '',
-    avatar: user.profile_picture || user.profile_pic || channel.profile_picture || '', banner: channel.banner_image || channel.banner || '',
+    avatar: '', banner: channel.banner_image || channel.banner || '',
     url: `https://kick.com/${encodeURIComponent(slug)}`, live: true
   };
 }
@@ -306,7 +342,7 @@ async function kickCategories(env, limit = 30, query = '') {
   if (query) params.set('q', query);
   const payload = await kickApi(env, `/public/v2/categories?${params}`);
   const rows = payload.data || payload.categories || [];
-  return rows.map(item => ({ id: String(item.id || item.category_id || ''), platform: 'kick', name: item.name || item.title || '', image: item.thumbnail || item.thumbnail_url || item.banner || '', watching: Number(item.viewer_count || item.viewers || 0), followers: Number(item.followers || 0) || null, tags: item.tags || [] })).slice(0, limit);
+  return rows.map(item => ({ id: String(item.id || item.category_id || ''), platform: 'kick', name: item.name || item.title || '', image: item.thumbnail || item.thumbnail_url || item.banner || '', watching: null, followers: Number(item.followers || 0) || null, tags: item.tags || [] })).slice(0, limit);
 }
 
 async function channelDetail(env, platform, identifier) {
@@ -347,7 +383,7 @@ async function channelDetail(env, platform, identifier) {
     if (!row) throw new HttpError(404, 'Kick channel not found.', 'channel_not_found');
     const live = await kickLive(env, 1, String(row.category?.id || ''));
     const stream = live.find(item => item.username.toLowerCase() === normalized.toLowerCase()) || null;
-    return { platform, id: String(row.broadcaster_user_id || row.id || normalized), username: row.slug || normalized, name: row.name || row.slug || normalized, description: row.description || '', avatar: row.profile_picture || row.user?.profile_picture || '', banner: row.banner_image || '', followers: Number(row.followers_count || 0) || null, live: Boolean(stream), stream, category: stream?.category || row.category?.name || '', title: stream?.title || row.stream_title || '', viewers: stream?.viewers || 0, url: `https://kick.com/${encodeURIComponent(row.slug || normalized)}`, socials: [{ platform: 'kick', url: `https://kick.com/${encodeURIComponent(row.slug || normalized)}` }] };
+    return { platform, id: String(row.broadcaster_user_id || row.id || normalized), username: row.slug || normalized, name: row.name || row.slug || normalized, description: row.description || '', avatar: '', banner: row.banner_image || '', followers: Number(row.followers_count || 0) || null, live: Boolean(stream), stream, category: stream?.category || row.category?.name || '', title: stream?.title || row.stream_title || '', viewers: stream?.viewers ?? null, viewerCountAvailable: Boolean(stream?.viewerCountAvailable), url: `https://kick.com/${encodeURIComponent(row.slug || normalized)}`, socials: [{ platform: 'kick', url: `https://kick.com/${encodeURIComponent(row.slug || normalized)}` }] };
   }
   throw new HttpError(501, `${platform} does not expose an official channel lookup API for this feature.`, 'platform_capability_unavailable');
 }
@@ -397,7 +433,11 @@ export async function followingLive(request, env) {
     try {
       if (row.platform === 'twitch') { const result = await twitchFollowing(env, row); streams.push(...result); platformStatus.twitch = { connected: true, count: result.length, complete: true }; }
       else if (row.platform === 'youtube') { const result = await youtubeFollowing(env, row); streams.push(...result.streams); platformStatus.youtube = { connected: true, count: result.streams.length, complete: !result.partial, checkedSubscriptions: result.checkedSubscriptions, totalSubscriptions: result.totalSubscriptions }; }
-      else if (row.platform === 'rumble') { const result = await rumbleConnectedLive(env, row); streams.push(...result); platformStatus.rumble = { connected: true, count: result.length, complete: false, note: PLATFORM_CAPABILITIES.rumble.followsNote }; }
+      else if (row.platform === 'rumble') {
+        const metadata = parseJson(row.metadata_json, {});
+        if (metadata.connectionType === 'account-popup') platformStatus.rumble = { connected: true, count: 0, complete: false, note: 'Rumble account sign-in confirmed; Rumble does not expose followed-live data.' };
+        else { const result = await rumbleConnectedLive(env, row); streams.push(...result); platformStatus.rumble = { connected: true, count: result.length, complete: false, note: PLATFORM_CAPABILITIES.rumble.followsNote }; }
+      }
       else platformStatus[row.platform] = { connected: true, count: 0, complete: false, note: PLATFORM_CAPABILITIES[row.platform]?.followsNote || 'Following data is unavailable.' };
     } catch (error) {
       platformStatus[row.platform] = { connected: true, count: 0, complete: false, error: error.message };
@@ -413,7 +453,7 @@ export async function browse(env, platform, view, options = {}) {
   const categoryId = String(options.categoryId || '').trim();
   const channelId = String(options.channelId || '').trim();
   const chart = String(options.chart || '').trim();
-  const cacheKey = `browse:${platform}:${view}:${limit}:${categoryId}:${channelId}:${chart}:${query.toLowerCase()}`;
+  const cacheKey = `browse:v2:${platform}:${view}:${limit}:${categoryId}:${channelId}:${chart}:${query.toLowerCase()}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   let items;
@@ -457,12 +497,21 @@ async function searchTwitchChannels(env, query, limit) {
   const search = await twitchApi(env, `/search/channels?query=${encodeURIComponent(query)}&first=${limit}`);
   const users = await twitchUsers(env, (search.data || []).map(item => item.id));
   const byId = new Map(users.map(item => [item.id, item]));
-  return (search.data || []).map(item => ({
-    platform: 'twitch', id: item.id, name: item.display_name, username: item.broadcaster_login,
-    avatar: byId.get(item.id)?.profile_image_url || item.thumbnail_url || '', banner: byId.get(item.id)?.offline_image_url || '',
-    live: Boolean(item.is_live), category: item.game_name || '', viewers: 0,
-    url: `https://www.twitch.tv/${encodeURIComponent(item.broadcaster_login)}`
-  }));
+  const liveIds = (search.data || []).filter(item => item.is_live).map(item => item.id);
+  const streamParams = new URLSearchParams();
+  liveIds.forEach(id => streamParams.append('user_id', id));
+  const streams = liveIds.length ? (await twitchApi(env, `/streams?${streamParams}`)).data || [] : [];
+  const streamsByUserId = new Map(streams.map(stream => [stream.user_id, stream]));
+  return (search.data || []).map(item => {
+    const stream = streamsByUserId.get(item.id);
+    return {
+      platform: 'twitch', id: item.id, name: item.display_name, username: item.broadcaster_login,
+      avatar: byId.get(item.id)?.profile_image_url || item.thumbnail_url || '', banner: byId.get(item.id)?.offline_image_url || '',
+      live: Boolean(stream), category: stream?.game_name || item.game_name || '', viewers: stream ? Number(stream.viewer_count) : null,
+      viewerCountAvailable: Boolean(stream && Number.isFinite(Number(stream.viewer_count))),
+      url: `https://www.twitch.tv/${encodeURIComponent(item.broadcaster_login)}`
+    };
+  });
 }
 
 function normalizeCreatorYoutubeChannel(item) {
@@ -470,7 +519,7 @@ function normalizeCreatorYoutubeChannel(item) {
   const username = String(item.handle || item.channelName || item.title || id).replace(/^@/, '');
   return {
     platform: 'youtube', id, name: item.channelName || item.title || username, username,
-    avatar: item.thumbnail || item.avatar || '', banner: '', live: false, category: '', viewers: 0,
+    avatar: item.thumbnail || item.avatar || '', banner: '', live: false, category: '', viewers: null, viewerCountAvailable: false,
     url: id ? `https://www.youtube.com/channel/${encodeURIComponent(id)}` : `https://www.youtube.com/@${encodeURIComponent(username)}`
   };
 }
@@ -478,12 +527,19 @@ function normalizeCreatorYoutubeChannel(item) {
 async function searchYoutubeChannels(env, query, limit) {
   try {
     const search = await youtubeApi(env, `/search?part=snippet&type=channel&maxResults=${limit}&q=${encodeURIComponent(query)}`);
-    return (search.items || []).map(item => ({
-      platform: 'youtube', id: item.id?.channelId, name: item.snippet?.channelTitle || item.snippet?.title || '',
-      username: item.snippet?.channelTitle || '', avatar: item.snippet?.thumbnails?.high?.url || '', banner: '',
-      live: false, category: '', viewers: 0,
-      url: `https://www.youtube.com/channel/${encodeURIComponent(item.id?.channelId || '')}`
-    }));
+    let liveVideos = [];
+    try { liveVideos = await youtubeSearchVideos(env, { limit: Math.min(10, Math.max(limit, 5)), query, live: true }); } catch {}
+    const liveByChannelId = new Map(liveVideos.map(video => [video.channelId, video]));
+    return (search.items || []).map(item => {
+      const stream = liveByChannelId.get(item.id?.channelId);
+      return {
+        platform: 'youtube', id: item.id?.channelId, name: item.snippet?.channelTitle || item.snippet?.title || '',
+        username: item.snippet?.channelTitle || '', avatar: item.snippet?.thumbnails?.high?.url || '', banner: '',
+        live: Boolean(stream), category: stream?.category || '', viewers: stream?.viewerCountAvailable ? Number(stream.viewers) : null,
+        viewerCountAvailable: Boolean(stream?.viewerCountAvailable),
+        url: `https://www.youtube.com/channel/${encodeURIComponent(item.id?.channelId || '')}`
+      };
+    });
   } catch (error) {
     const fallback = await creatorSearch(env, `/v1/youtube/search?query=${encodeURIComponent(query)}&type=channels`);
     return (fallback.channels || []).slice(0, limit).map(normalizeCreatorYoutubeChannel);
@@ -501,8 +557,8 @@ async function searchKickChannels(env, query, limit) {
     } catch {}
   }
   return matches.slice(0, limit).map(item => ({
-    platform: 'kick', id: item.id, name: item.name, username: item.username, avatar: item.avatar || '', banner: item.banner || '',
-    live: Boolean(item.live), category: item.category || '', viewers: Number(item.viewers) || 0,
+    platform: 'kick', id: item.id, name: item.name, username: item.username, avatar: '', banner: item.banner || '',
+    live: Boolean(item.live), category: item.category || '', viewers: item.viewerCountAvailable && Number.isFinite(Number(item.viewers)) ? Number(item.viewers) : null, viewerCountAvailable: Boolean(item.live && item.viewerCountAvailable),
     url: item.url || `https://kick.com/${encodeURIComponent(item.username)}`
   }));
 }
@@ -515,10 +571,11 @@ async function searchRumbleChannels(env, query, limit) {
     const username = item.handle || item.slug || item.username || item.name || '';
     if (!username) continue;
     const key = username.toLowerCase();
+    const viewerCount = availableNumber(item.viewers, item.watching_now, item.viewer_count);
     if (!unique.has(key)) unique.set(key, {
       platform: 'rumble', id: String(item.id || username), name: item.name || item.title || username, username,
       avatar: item.thumbnail || item.avatar || '', banner: '', live: Boolean(item.live || item.is_live),
-      category: item.category || '', viewers: Number(item.viewers || item.watching_now || 0),
+      category: item.category || '', viewers: viewerCount, viewerCountAvailable: Boolean((item.live || item.is_live) && viewerCount !== null),
       url: item.url || `https://rumble.com/c/${encodeURIComponent(username)}`
     });
   }
@@ -529,7 +586,7 @@ export async function globalSearch(env, query, limit = 20) {
   const q = String(query || '').trim();
   if (q.length < 2) return [];
   const perPlatform = clampInt(Math.ceil(Number(limit || 20) / 4), 2, 10, 5);
-  const cacheKey = `search:global:v2:${q.toLowerCase()}:${perPlatform}`;
+  const cacheKey = `search:global:v3:${q.toLowerCase()}:${perPlatform}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   const settled = await Promise.allSettled([

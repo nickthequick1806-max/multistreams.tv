@@ -23,3 +23,11 @@ test('all inline classic scripts and the backend client parse as JavaScript', ()
   assert.doesNotThrow(() => new vm.Script(backendClient, { filename: 'backend-client.js' }));
   assert.match(html, /<script src="\/backend-client\.js\?v=[0-9.]+"><\/script>/);
 });
+
+test('platform-aware UI fallbacks and category metadata rules are present', () => {
+  assert.match(backendClient, /item\?\.platform === 'kick'/);
+  assert.match(backendClient, /suggested-platform-icon/);
+  assert.match(backendClient, /hasViewerCount/);
+  assert.match(backendClient, /\['kick', 'youtube'\]\.includes\(currentBrowsePlatform\)/);
+  assert.doesNotMatch(backendClient, /Rumble did not recognize that Live Stream API URL/);
+});

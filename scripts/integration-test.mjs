@@ -108,6 +108,11 @@ assert.equal(capabilities.capabilities.twitch.follows, true);
 assert.equal(capabilities.capabilities.kick.clips, false);
 assert.equal(capabilities.capabilities.rumble.oauth, false);
 
+const rumbleConnection = await request('/api/platform/rumble/connect', { method: 'POST', body: { popupConfirmed: true } });
+assert.equal(rumbleConnection.dataAccess, false);
+assert.equal((await request('/api/platform/connections')).connections.some(item => item.platform === 'rumble'), true);
+assert.equal((await request('/api/following/live')).platformStatus.rumble.connected, true);
+
 const search = await request(`/api/profiles?q=${encodeURIComponent(username.slice(0, 8))}`);
 assert.equal(search.profiles.some(item => item.username === username), true);
 
@@ -118,4 +123,4 @@ await request('/api/auth/account', { method: 'DELETE', body: { confirmation: use
 cookie = '';
 assert.equal((await request('/api/auth/session')).authenticated, false);
 
-console.log(JSON.stringify({ ok: true, checks: 36 - Number(skipExternalNotifications) - (skipRewards ? 7 : 0), user: username, rewards }));
+console.log(JSON.stringify({ ok: true, checks: 39 - Number(skipExternalNotifications) - (skipRewards ? 7 : 0), user: username, rewards }));
