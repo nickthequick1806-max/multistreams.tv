@@ -21,15 +21,11 @@
       "migrations_dir": "migrations"
     }
   ],
-  "r2_buckets": [
-    {
-      "binding": "MEDIA",
-      "bucket_name": "multistreams-media"
-    }
-  ],
   "vars": {
     "APP_ORIGIN": "https://multistreams.tv",
     "SESSION_COOKIE": "ms_session",
+    "GEMINI_BACKEND_URL": "https://html-viewer-secure-backend.nickthequick1806.workers.dev/api/ai/gemini",
+    "GEMINI_BACKEND_ORIGIN": "https://htmlviewer.site",
     "REWARD_DEVELOPER_MODE": "false",
     "FEATURED_CHANNELS_JSON": "{\"twitch\":[\"xqc\",\"kaicenat\",\"jynxzi\",\"hasanabi\",\"tarik\",\"shroud\",\"ninja\",\"pokimane\"],\"youtube\":[\"IShowSpeed\",\"Ludwig\",\"Valkyrae\",\"TimTheTatman\"],\"kick\":[\"xqc\",\"adinross\",\"trainwreckstv\",\"n3on\"]}"
   },
@@ -38,9 +34,11 @@
       "TOKEN_ENCRYPTION_KEY",
       "TWITCH_CLIENT_ID",
       "TWITCH_CLIENT_SECRET",
+      "TWITCH_APP_ACCESS_TOKEN",
       "GOOGLE_CLIENT_ID",
       "GOOGLE_CLIENT_SECRET",
       "YOUTUBE_API_KEY",
+      "YOUTUBE_API_KEY_FALLBACK",
       "KICK_CLIENT_ID",
       "KICK_CLIENT_SECRET",
       "DISCORD_WEBHOOK_URL",

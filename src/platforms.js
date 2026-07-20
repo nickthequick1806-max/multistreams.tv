@@ -18,6 +18,7 @@ function twitchThumbnail(value, width = 640, height = 360) {
 }
 
 async function appToken(env, platform) {
+  if (platform === 'twitch' && env.TWITCH_APP_ACCESS_TOKEN) return env.TWITCH_APP_ACCESS_TOKEN;
   const key = `${platform}:app-token`;
   const cached = await cacheGet(env, key);
   if (cached?.ciphertext) {
@@ -51,20 +52,23 @@ async function kickApi(env, path, accessToken) {
 }
 
 async function youtubeApi(env, path, accessToken) {
-  const url = new URL(`https://www.googleapis.com/youtube/v3${path}`);
-  const headers = {};
-  if (accessToken) headers.authorization = `Bearer ${accessToken}`;
-  else {
-    if (!env.YOUTUBE_API_KEY) throw new HttpError(503, 'YouTube Data API is not configured.', 'platform_not_configured');
-    url.searchParams.set('key', env.YOUTUBE_API_KEY);
+  const keys = accessToken ? [''] : [...new Set([env.YOUTUBE_API_KEY, env.YOUTUBE_API_KEY_FALLBACK].filter(Boolean))];
+  if (!accessToken && !keys.length) throw new HttpError(503, 'YouTube Data API is not configured.', 'platform_not_configured');
+  let lastFailure = null;
+  for (const key of keys) {
+    const url = new URL(`https://www.googleapis.com/youtube/v3${path}`);
+    const headers = {};
+    if (accessToken) headers.authorization = `Bearer ${accessToken}`;
+    else url.searchParams.set('key', key);
+    const response = await fetch(url, { headers });
+    const payload = await response.json().catch(() => ({}));
+    if (response.ok) return payload;
+    lastFailure = { response, payload };
+    if (accessToken || ![400, 403].includes(response.status)) break;
   }
-  const response = await fetch(url, { headers });
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    const reason = payload.error?.errors?.[0]?.reason || '';
-    throw new HttpError(response.status === 403 && reason.includes('quota') ? 429 : 502, `YouTube API request failed (${reason || response.status}).`, 'youtube_api_error');
-  }
-  return payload;
+  const reason = lastFailure?.payload?.error?.errors?.[0]?.reason || '';
+  const status = lastFailure?.response?.status || 502;
+  throw new HttpError(status === 403 && reason.includes('quota') ? 429 : 502, `YouTube API request failed (${reason || status}).`, 'youtube_api_error');
 }
 
 async function connection(env, userId, platform) {

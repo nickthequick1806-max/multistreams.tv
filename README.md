@@ -5,8 +5,7 @@ Multistreams.tv is a multi-platform livestream dashboard with Cloudflare-backed 
 ## Architecture
 
 - Cloudflare Worker serves both the site and `/api/*` routes.
-- D1 stores accounts, sessions, settings, layouts, profiles, OAuth connections, follows, blocks, rewards, and notifications.
-- R2 stores uploaded profile avatars and banners.
+- D1 stores accounts, sessions, settings, layouts, profiles, OAuth connections, follows, blocks, rewards, notifications, and optimized profile media.
 - Provider/API credentials are Worker secrets and are never shipped to the browser.
 - Passwords use PBKDF2-SHA-256; sessions use hashed opaque tokens; OAuth and TOTP secrets use AES-GCM encryption.
 
@@ -23,11 +22,11 @@ Set `REWARD_DEVELOPER_MODE=true` only in local development to remove reward wait
 
 - `npm test` runs crypto, TOTP, collectible-catalog, secret-leak, and frontend parse checks.
 - `npm run check` builds the static assets, generates Worker types, and performs a Wrangler deployment dry run.
-- `npm run test:integration` exercises the Worker against local D1/R2, including account signup/login, TOTP, profiles, media, layouts, privacy data, and unique reward claims.
+- `npm run test:integration` exercises the Worker against local D1, including account signup/login, TOTP, profiles, media, layouts, privacy data, and unique reward claims.
 
 ## Production setup
 
-Create `multistreams-production` in D1 and `multistreams-media` in R2, update the generated D1 database ID in `wrangler.jsonc`, apply migrations remotely, and set every secret listed in `.env.example` with `wrangler secret put`.
+Create `multistreams-production` in D1, update the generated D1 database ID in `wrangler.jsonc`, apply migrations remotely, and set the configured secrets listed in `.env.example` with `wrangler secret put`. Profile uploads are resized in the browser and stored in D1 so the deployment does not require an R2 subscription.
 
 OAuth callback URLs:
 
@@ -36,7 +35,7 @@ OAuth callback URLs:
 - `https://multistreams.tv/api/oauth/twitch/callback`
 - `https://multistreams.tv/api/oauth/kick/callback`
 
-The apex domain is served by the Cloudflare Worker custom-domain route. The GitHub repository homepage points to `https://multistreams.tv`; GitHub Pages is intentionally not used because it cannot run the Worker/D1/R2 backend.
+The apex domain is served by the Cloudflare Worker custom-domain route. The GitHub repository homepage points to `https://multistreams.tv`; GitHub Pages is intentionally not used because it cannot run the Worker/D1 backend.
 
 ## Provider boundaries
 

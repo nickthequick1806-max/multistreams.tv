@@ -390,10 +390,32 @@
     await refreshSession();
   };
 
+  async function optimizeProfileImage(file, type) {
+    if (!file || file.type === 'image/gif' || file.size <= 700 * 1024) return file;
+    try {
+      const bitmap = await createImageBitmap(file);
+      const bounds = type === 'banner' ? { width: 1600, height: 600 } : { width: 640, height: 640 };
+      const scale = Math.min(1, bounds.width / bitmap.width, bounds.height / bitmap.height);
+      const width = Math.max(1, Math.round(bitmap.width * scale));
+      const height = Math.max(1, Math.round(bitmap.height * scale));
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      canvas.getContext('2d').drawImage(bitmap, 0, 0, width, height);
+      bitmap.close?.();
+      const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/webp', 0.84));
+      if (!blob) return file;
+      return new File([blob], `${type}.webp`, { type: 'image/webp', lastModified: Date.now() });
+    } catch {
+      return file;
+    }
+  }
+
   async function uploadProfileImage(event, type) {
-    const file = event?.target?.files?.[0];
-    if (!file) return;
+    const selectedFile = event?.target?.files?.[0];
+    if (!selectedFile) return;
     const form = new FormData();
+    const file = await optimizeProfileImage(selectedFile, type);
     form.append('file', file);
     try {
       const response = await fetch(`/api/uploads/profile?type=${encodeURIComponent(type)}`, { method: 'POST', credentials: 'include', body: form });
