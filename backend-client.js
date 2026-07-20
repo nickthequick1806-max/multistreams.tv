@@ -83,7 +83,7 @@
 
   function buildLayoutLink(layoutChannels, layout) {
     const streams = (layoutChannels || []).map(channel => `${channel.platform}:${channel.name}`).join(',');
-    return `${location.origin}/multistreams.html?streams=${encodeURIComponent(streams)}&layout=${encodeURIComponent(layout || 'grid')}`;
+    return `${location.origin}/multistreams?streams=${encodeURIComponent(streams)}&layout=${encodeURIComponent(layout || 'grid')}`;
   }
 
   function applySession(payload) {
@@ -283,6 +283,15 @@
         params.delete('oauth'); params.delete('auth'); params.delete('status');
         history.replaceState({}, '', `${location.pathname}${params.toString() ? `?${params}` : ''}${location.hash}`);
       }
+      const profileMatch = location.pathname.match(/^\/profile\/([^/]+)\/?$/);
+      if (profileMatch) {
+        const username = decodeURIComponent(profileMatch[1]);
+        document.querySelectorAll('.dropdown-menu').forEach(menu => menu.classList.remove('active'));
+        document.getElementById('my-profile-modal')?.classList.add('active');
+        await window.viewProfile(username);
+        switchProfileTab?.('layouts');
+        document.title = `${username} | Multistreams.tv`;
+      }
     } catch (error) {
       notifyError(error, 'The production backend could not be reached.');
     }
@@ -344,7 +353,7 @@
     } catch (error) { if (errorElement) errorElement.textContent = error.message; }
   };
 
-  window.startGoogleAccountFlow = () => { location.href = '/api/oauth/google/start?purpose=login&returnTo=/multistreams.html'; };
+  window.startGoogleAccountFlow = () => { location.href = '/api/oauth/google/start?purpose=login&returnTo=/multistreams'; };
 
   window.toggleTwoFactorAuthentication = async enabled => {
     const toggle = document.getElementById('setting-two-factor');
@@ -458,18 +467,38 @@
   };
 
   // OAuth connections and provider status.
+  async function finishRumbleConnection() {
+    const apiUrl = prompt('Paste the private Live Stream API URL shown on your Rumble account page. It is verified and encrypted by the Multistreams backend:');
+    if (!apiUrl) return;
+    try {
+      await api('/api/platform/rumble/connect', { method: 'POST', body: JSON.stringify({ apiUrl }) });
+      await loadConnectionsAndFollowing();
+      showNotification('Rumble creator data connected', 'saved', { position: 'bottom-right' });
+    } catch (error) { notifyError(error); }
+  }
+
   window.connectAccount = async platformName => {
     if (!accountState.signedIn) { handleProfilePrimaryAction(); return; }
     const platform = String(platformName || '').toLowerCase();
     if (platform === 'rumble') {
-      const apiUrl = prompt('Paste the private Rumble Live Stream API URL from rumble.com/account/livestream-api. It will be encrypted in the backend:');
-      if (!apiUrl) return;
-      try { await api('/api/platform/rumble/connect', { method: 'POST', body: JSON.stringify({ apiUrl }) }); await loadConnectionsAndFollowing(); showNotification('Rumble creator data connected', 'saved', { position: 'bottom-right' }); }
-      catch (error) { notifyError(error); }
+      const popup = window.open('https://rumble.com/account/livestream-api', 'multistreams-rumble-connect', 'popup=yes,width=980,height=760,resizable=yes,scrollbars=yes');
+      if (!popup) {
+        showNotification('Allow the Rumble pop-up, or paste your Live Stream API URL now', 'info', { position: 'bottom-right' });
+        await finishRumbleConnection();
+        return;
+      }
+      showNotification('Sign in to Rumble, copy your Live Stream API URL, then close the pop-up', 'info', { position: 'bottom-right' });
+      const startedAt = Date.now();
+      const watcher = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(watcher);
+          finishRumbleConnection();
+        } else if (Date.now() - startedAt > 10 * 60_000) clearInterval(watcher);
+      }, 700);
       return;
     }
     if (!['twitch', 'youtube', 'kick'].includes(platform)) return;
-    location.href = `/api/oauth/${platform}/start?returnTo=/multistreams.html`;
+    location.href = `/api/oauth/${platform}/start?returnTo=/multistreams`;
   };
 
   window.updateConnectAccountStatuses = () => {
@@ -593,6 +622,23 @@
       }));
     } catch { return []; }
   }
+  window.searchAllPlatforms = async query => {
+    try {
+      const payload = await api(`/api/search/global?q=${encodeURIComponent(query)}&limit=20`);
+      const groups = { twitch: [], youtube: [], kick: [], rumble: [] };
+      for (const item of payload.items || []) {
+        if (!groups[item.platform]) continue;
+        groups[item.platform].push({
+          id: item.id, name: item.username || item.name, username: item.username, displayName: item.name,
+          platform: item.platform, avatar: item.avatar, thumbnail: item.avatar, live: item.live,
+          category: item.category, viewers: item.viewers || 'â€”', url: item.url
+        });
+      }
+      return groups;
+    } catch {
+      return { twitch: [], youtube: [], kick: [], rumble: [] };
+    }
+  };
   window.searchTwitch = async (query, options = {}) => {
     if (options.broadcasterId) {
       try {

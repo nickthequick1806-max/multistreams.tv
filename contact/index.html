@@ -6,9 +6,10 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+  <base href="/">
   <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multistreams.tv | Status</title>
+    <title>Multistreams.tv | Contact</title>
     <meta name="description" content="Watch multiple Twitch, YouTube, Kick and Rumble streams at once with Multistreams.tv">
     <meta name="theme-color" content="#2f81d4">
     <meta name="color-scheme" content="dark">
@@ -41,11 +42,11 @@
   <header class="site-header">
     <div class="container header-inner">
       <a class="brand" href="/home">
-    <img class="brand-mark" src="https://i.postimg.cc/HsT3RLVn/multistreams-icon.png" alt="Multistreams.tv Logo">
-    <span class="brand-name">
-    <span class="brand-white">Multistreams</span><span class="brand-tv">.tv</span>
-</span>
-</a>
+        <img class="brand-mark" src="https://i.postimg.cc/HsT3RLVn/multistreams-icon.png" alt="Multistreams.tv Logo">
+        <span class="brand-name">
+          <span class="brand-white">Multistreams</span><span class="brand-tv">.tv</span>
+        </span>
+      </a>
 
       <div class="header-actions">
   <a class="icon-btn start-btn" href="/multistreams">
@@ -57,26 +58,73 @@
   </header>
 
   <main class="site-main">
-    <div class="container">
-      <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Multistreams.tv | Status</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <main class="site-main">
-    <div class="container">
-      <section class="hero">
-        <h1>Status Page - Coming Soon!</h1>
+    <div class="container contact-page">
+      <section class="hero contact-hero">
+        <h1>Contact Us</h1>
+        <p>We'd love to hear from you. Whether you have a question, feedback, or a feature request, feel free to reach out.</p>
       </section>
-      
-    </div>
-  </main>
-</body>
-</html>
+
+      <section class="contact-cards">
+        <article class="contact-card">
+          <h3>General Inquiries</h3>
+          <p>For general questions about Multistreams.</p>
+        </article>
+
+        <article class="contact-card">
+          <h3>Feature Requests</h3>
+          <p>Have an idea to improve the multistream experience?</p>
+        </article>
+
+        <article class="contact-card">
+          <h3>Business & Partnerships</h3>
+          <p>Advertising, sponsorships, and collaboration.</p>
+        </article>
+
+        <article class="contact-card">
+          <h3>Report an Issue</h3>
+          <p>Stream not loading, UI bug, or technical problems.</p>
+        </article>
+      </section>
+
+      <section class="contact-form-section">
+        <h2>Send Us a Message</h2>
+
+        <form id="contactForm" class="contact-form">
+          <div class="form-row">
+            <div class="field">
+              <label for="name">Name *</label>
+              <input type="text" id="name" name="name" placeholder="Your name" required>
+            </div>
+
+            <div class="field">
+              <label for="email">Email *</label>
+              <input type="email" id="email" name="email" placeholder="you@example.com" required>
+            </div>
+          </div>
+
+          <div class="field">
+            <label for="subject">Subject</label>
+            <select id="subject" name="subject">
+              <option value="General Inquiry">Select a topic...</option>
+              <option value="General Inquiry">General Inquiry</option>
+              <option value="Feature Request">Feature Request</option>
+              <option value="Business Partnership">Business & Partnership</option>
+              <option value="Bug Report">Report an Issue</option>
+            </select>
+          </div>
+
+          <div class="field">
+            <label for="message">Message *</label>
+            <textarea id="message" name="message" placeholder="Write your message here..." rows="7" required></textarea>
+          </div>
+
+          <button type="submit" class="icon-btn start-btn contact-send-btn">
+  <i class="fa-solid fa-paper-plane" aria-hidden="true"></i>
+  <span>Send Message</span>
+</button>
+          <p id="formStatus" class="form-status" aria-live="polite"></p>
+        </form>
+      </section>
     </div>
   </main>
 
@@ -85,11 +133,11 @@
       <div class="footer-grid">
         <div class="footer-brand">
           <a class="brand" href="/home">
-    <img class="brand-mark" src="https://i.postimg.cc/HsT3RLVn/multistreams-icon.png" alt="Multistreams.tv Logo">
-    <span class="brand-name">
-    <span class="brand-white">Multistreams</span><span class="brand-tv">.tv</span>
-</span>
-</a>
+            <img class="brand-mark" src="https://i.postimg.cc/HsT3RLVn/multistreams-icon.png" alt="Multistreams.tv Logo">
+            <span class="brand-name">
+              <span class="brand-white">Multistreams</span><span class="brand-tv">.tv</span>
+            </span>
+          </a>
           <p>Watch and compare multiple streams in one clean, easy-to-use interface.</p>
         </div>
 
@@ -107,7 +155,6 @@
           <a href="/contact">Contact</a>
           <a href="/blog">Blog</a>
           <a href="/status">Status</a>
-          
         </div>
 
         <div class="footer-col">
@@ -127,8 +174,8 @@
       <div>All platforms. One screen.</div>
     </div>
   </footer>
-</body>
-<script>
+
+  <script>
   const revealEls = document.querySelectorAll(
     'section, .hero, .section, .contact-card, .info-card, .step-card, .faq-card, .blog-card, .blog-reader, .contact-form-section, .home-cta, .platform-pill'
   );
@@ -153,4 +200,6 @@
     document.body.classList.add('page-loaded');
   });
 </script>
+  <script src="contact.js"></script>
+</body>
 </html>
