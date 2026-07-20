@@ -317,8 +317,11 @@
     width: 140px;
     text-align: center;
   }
-  .suggested-card img { width: 48px; height: 48px; border-radius: 50%; margin-bottom: 8px; }
+  .suggested-card .suggested-avatar { width: 48px; height: 48px; border-radius: 50%; margin-bottom: 8px; }
   .suggested-card .name { font-weight: bold; font-size: 14px; margin-bottom: 4px; color: var(--text-main); }
+  .suggested-name-row { display: flex; max-width: 100%; align-items: center; justify-content: center; gap: 6px; }
+  .suggested-platform-icon { display: grid; width: 16px; height: 16px; flex: 0 0 16px; place-items: center; margin-bottom: 4px; }
+  .suggested-platform-icon svg { width: 14px; height: 14px; }
   .suggested-card .cat { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
   .suggested-card .viewers {
     font-size: 12px;
@@ -3042,7 +3045,24 @@ body.light-mode .collection-grid-item { border-color: #dbe0e6; background: #f4f6
   z-index: 99999;
   display: none;
   animation: fadeInHover 0.15s ease forwards;
+  transition: opacity .14s ease, transform .14s ease;
 }
+
+.stream-hover-card.is-closing { animation: none; opacity: 0; transform: translateY(5px); pointer-events: none; }
+
+.generated-profile-avatar {
+  display: grid;
+  place-items: center;
+  background: linear-gradient(145deg, #182839, #0b131f 72%);
+  color: #dff5ff;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .055em;
+  text-transform: uppercase;
+  box-shadow: inset 0 0 0 1px rgba(125, 211, 252, .16);
+}
+.suggested-avatar.generated-profile-avatar { font-size: 14px; }
+.hover-pfp.generated-profile-avatar { font-size: 19px; }
 
 @keyframes fadeInHover {
   from { opacity: 0; transform: translateY(8px); }
@@ -11710,11 +11730,14 @@ function renderMultiPlatformSearchResults(query, twitch, kick, youtube, rumble) 
     <div class="global-search-summary"><span>Global results</span><span>${rankedResults.length} matches</span></div>
     <div class="global-results-list">
       ${rankedResults.map(result => {
-        const avatar = result.avatar || result.thumbnail || `https://ui-avatars.com/api/?name=${encodeURIComponent(result.displayName)}&background=17202b&color=eff6ff`;
-        const meta = [result.live ? 'Live now' : 'Channel', result.category, result.viewers && result.viewers !== '—' ? `${result.viewers} viewers` : ''].filter(Boolean).join(' · ');
+        const avatar = typeof renderPlatformAvatar === 'function'
+          ? renderPlatformAvatar(result, 'global-result-avatar')
+          : `<img class="global-result-avatar" src="${result.avatar || result.thumbnail || ''}" alt="">`;
+        const viewerText = typeof hasPlatformViewerCount === 'function' && hasPlatformViewerCount(result) ? `${formatBrowseCount(result.viewers)} viewers` : '';
+        const meta = [result.live ? 'Live now' : 'Channel', result.category, viewerText].filter(Boolean).join(' · ');
         return `
           <button type="button" class="global-result-card" data-search-name="${escapeBrowseHTML(result.name)}" data-search-platform="${result.platform}">
-            <img class="global-result-avatar" src="${avatar}" alt="">
+            ${avatar}
             <span class="global-result-copy">
               <span class="global-result-name">${result.live ? '<span class="global-result-live" aria-hidden="true"></span>' : ''}${escapeBrowseHTML(result.displayName)}</span>
               <span class="global-result-meta">${escapeBrowseHTML(meta || `Result on ${result.platform}`)}</span>
@@ -16320,11 +16343,11 @@ function renderBrowseLiveCards(streams) {
           <div class="browse-media-thumb">
             <img src="${stream.thumbnail}" alt="" loading="lazy">
             <span class="browse-live-badge">LIVE</span>
-            <span class="browse-view-count">${formatBrowseCount(stream.viewers)} viewers</span>
+            ${typeof hasPlatformViewerCount === 'function' && hasPlatformViewerCount(stream) ? `<span class="browse-view-count">${formatBrowseCount(stream.viewers)} viewers</span>` : ''}
           </div>
           <div class="browse-card-body">
             <div class="browse-card-profile">
-              <img class="browse-card-avatar" src="${stream.avatar}" alt="">
+              ${typeof renderPlatformAvatar === 'function' ? renderPlatformAvatar(stream, 'browse-card-avatar') : `<img class="browse-card-avatar" src="${stream.avatar || ''}" alt="">`}
               <div class="browse-card-copy">
                 <div class="browse-card-title">${escapeBrowseHTML(stream.name)}</div>
                 <div class="browse-card-subtitle">${escapeBrowseHTML(stream.title)}</div>
@@ -16646,6 +16669,6 @@ if (channels.length > 0 && !activeChat) {
 applyLanguage(settings.language || 'en');
 
 </script>
-<script src="/backend-client.js?v=20260720.2"></script>
+<script src="/backend-client.js?v=20260720.4"></script>
 </body>
 </html>
