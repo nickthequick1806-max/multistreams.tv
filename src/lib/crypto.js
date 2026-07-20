@@ -1,5 +1,6 @@
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+const PBKDF2_ITERATIONS = 100_000;
 
 export function randomId(bytes = 18) {
   const data = crypto.getRandomValues(new Uint8Array(bytes));
@@ -23,14 +24,14 @@ export async function sha256(value) {
   return toBase64Url(await crypto.subtle.digest('SHA-256', encoder.encode(String(value))));
 }
 
-export async function hashPassword(password, salt = randomId(18), iterations = 310_000) {
+export async function hashPassword(password, salt = randomId(18), iterations = PBKDF2_ITERATIONS) {
   const material = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
   const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt: encoder.encode(salt), iterations }, material, 256);
   return { hash: toBase64Url(bits), salt, iterations };
 }
 
 export async function verifyPassword(password, expectedHash, salt, iterations) {
-  const result = await hashPassword(password, salt, Number(iterations) || 310_000);
+  const result = await hashPassword(password, salt, Number(iterations) || PBKDF2_ITERATIONS);
   return timingSafeEqual(result.hash, expectedHash);
 }
 
@@ -128,4 +129,3 @@ export function otpauthUri(secret, email, issuer = 'Multistreams.tv') {
   const params = new URLSearchParams({ secret, issuer, algorithm: 'SHA1', digits: '6', period: '30' });
   return `otpauth://totp/${encodeURIComponent(label)}?${params.toString()}`;
 }
-

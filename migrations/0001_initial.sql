@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS users (
   username TEXT NOT NULL COLLATE NOCASE UNIQUE,
   password_hash TEXT,
   password_salt TEXT,
-  password_iterations INTEGER NOT NULL DEFAULT 310000,
+  password_iterations INTEGER NOT NULL DEFAULT 100000,
   auth_method TEXT NOT NULL DEFAULT 'email',
   avatar_url TEXT NOT NULL DEFAULT '',
   banner_url TEXT NOT NULL DEFAULT '',

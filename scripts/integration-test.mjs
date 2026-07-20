@@ -6,6 +6,8 @@ if (!globalThis.crypto) globalThis.crypto = webcrypto;
 
 const base = process.env.MULTISTREAMS_TEST_URL || 'http://127.0.0.1:8787';
 const origin = 'https://multistreams.tv';
+const skipExternalNotifications = process.env.MULTISTREAMS_SKIP_EXTERNAL_NOTIFICATIONS === 'true';
+const skipRewards = process.env.MULTISTREAMS_SKIP_REWARDS === 'true';
 let cookie = '';
 
 async function request(path, { method = 'GET', body, expected = 200 } = {}) {
@@ -40,8 +42,10 @@ const signup = await request('/api/auth/signup', { method: 'POST', expected: 201
 assert.equal(signup.user.username, username);
 assert.match(cookie, /^ms_session=/);
 
-const contact = await request('/api/contact', { method: 'POST', expected: 201, body: { name: 'Integration QA', email, subject: 'Backend test', message: 'Confirm the contact form is stored by the backend.' } });
-assert.ok(contact.id);
+if (!skipExternalNotifications) {
+  const contact = await request('/api/contact', { method: 'POST', expected: 201, body: { name: 'Integration QA', email, subject: 'Backend test', message: 'Confirm the contact form is stored by the backend.' } });
+  assert.ok(contact.id);
+}
 
 await request('/api/profile/me', { method: 'PATCH', body: { bio: 'Backend integration profile', profileVisibility: 'public', socials: { twitch: 'https://twitch.tv/twitchdev' } } });
 const profile = await request('/api/profile/me');
@@ -83,17 +87,21 @@ assert.equal(login.requiresTwoFactor, true);
 const verified = await request('/api/auth/login/totp', { method: 'POST', body: { ticket: login.ticket, code: await totpCode(setup.secret) } });
 assert.equal(verified.user.username, username);
 
-const status = await request('/api/rewards/status');
-assert.equal(status.status.ready, true);
-assert.equal(status.status.developerMode, true);
-const reward = await request('/api/rewards/claim', { method: 'POST', body: {} });
-assert.match(reward.reward.id, /^(mythic|legendary|epic|rare|uncommon|common)-\d+$/);
-const collection = await request('/api/collectibles');
-assert.equal(collection.cards.length, 60);
-assert.equal(collection.cards.filter(card => card.unlocked).length, 1);
-const secondReward = await request('/api/rewards/claim', { method: 'POST', body: {} });
-assert.notEqual(secondReward.reward.id, reward.reward.id);
-assert.equal((await request('/api/collectibles')).cards.filter(card => card.unlocked).length, 2);
+let rewards = [];
+if (!skipRewards) {
+  const status = await request('/api/rewards/status');
+  assert.equal(status.status.ready, true);
+  assert.equal(status.status.developerMode, true);
+  const reward = await request('/api/rewards/claim', { method: 'POST', body: {} });
+  assert.match(reward.reward.id, /^(mythic|legendary|epic|rare|uncommon|common)-\d+$/);
+  const collection = await request('/api/collectibles');
+  assert.equal(collection.cards.length, 60);
+  assert.equal(collection.cards.filter(card => card.unlocked).length, 1);
+  const secondReward = await request('/api/rewards/claim', { method: 'POST', body: {} });
+  assert.notEqual(secondReward.reward.id, reward.reward.id);
+  assert.equal((await request('/api/collectibles')).cards.filter(card => card.unlocked).length, 2);
+  rewards = [reward.reward.id, secondReward.reward.id];
+}
 
 const capabilities = await request('/api/platform/capabilities');
 assert.equal(capabilities.capabilities.twitch.follows, true);
@@ -110,4 +118,4 @@ await request('/api/auth/account', { method: 'DELETE', body: { confirmation: use
 cookie = '';
 assert.equal((await request('/api/auth/session')).authenticated, false);
 
-console.log(JSON.stringify({ ok: true, checks: 36, user: username, rewards: [reward.reward.id, secondReward.reward.id] }));
+console.log(JSON.stringify({ ok: true, checks: 36 - Number(skipExternalNotifications) - (skipRewards ? 7 : 0), user: username, rewards }));

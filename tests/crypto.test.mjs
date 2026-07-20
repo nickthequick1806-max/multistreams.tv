@@ -13,6 +13,12 @@ test('password hashes verify without storing plaintext', async () => {
   assert.equal(await verifyPassword('wrong password', record.hash, record.salt, record.iterations), false);
 });
 
+test('default password hashing stays within the Cloudflare Workers PBKDF2 limit', async () => {
+  const record = await hashPassword('a production-strength test password', 'fixed-cloudflare-salt');
+  assert.equal(record.iterations, 100_000);
+  assert.equal(await verifyPassword('a production-strength test password', record.hash, record.salt, record.iterations), true);
+});
+
 test('OAuth and TOTP secrets encrypt and decrypt with AES-GCM', async () => {
   const encrypted = await encrypt('provider-access-token', 'test-encryption-key-that-is-long');
   assert.doesNotMatch(encrypted, /provider-access-token/);
@@ -27,4 +33,3 @@ test('TOTP matches RFC 6238 SHA-1 vector and accepts the current window', async 
   assert.equal(await verifyTotp(secret, currentCode, 1_234_567_890_000), true);
   assert.equal(await verifyTotp(secret, '000000', 1_234_567_890_000), false);
 });
-
