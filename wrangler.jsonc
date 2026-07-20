@@ -1,0 +1,56 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "multistreams-tv",
+  "main": "src/index.js",
+  "compatibility_date": "2026-07-19",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "multistreams.tv", "custom_domain": true }
+  ],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "run_worker_first": ["/api/*"]
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "multistreams-production",
+      "database_id": "c42f7aea-d421-4f2e-9d30-85ec551e7a87",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "MEDIA",
+      "bucket_name": "multistreams-media"
+    }
+  ],
+  "vars": {
+    "APP_ORIGIN": "https://multistreams.tv",
+    "SESSION_COOKIE": "ms_session",
+    "REWARD_DEVELOPER_MODE": "false",
+    "FEATURED_CHANNELS_JSON": "{\"twitch\":[\"xqc\",\"kaicenat\",\"jynxzi\",\"hasanabi\",\"tarik\",\"shroud\",\"ninja\",\"pokimane\"],\"youtube\":[\"IShowSpeed\",\"Ludwig\",\"Valkyrae\",\"TimTheTatman\"],\"kick\":[\"xqc\",\"adinross\",\"trainwreckstv\",\"n3on\"]}"
+  },
+  "secrets": {
+    "required": [
+      "TOKEN_ENCRYPTION_KEY",
+      "TWITCH_CLIENT_ID",
+      "TWITCH_CLIENT_SECRET",
+      "GOOGLE_CLIENT_ID",
+      "GOOGLE_CLIENT_SECRET",
+      "YOUTUBE_API_KEY",
+      "KICK_CLIENT_ID",
+      "KICK_CLIENT_SECRET",
+      "DISCORD_WEBHOOK_URL",
+      "GEMINI_API_KEY",
+      "SCRAPECREATORS_API_KEY"
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "logs": { "head_sampling_rate": 1 },
+    "traces": { "enabled": true, "head_sampling_rate": 0.05 }
+  }
+}

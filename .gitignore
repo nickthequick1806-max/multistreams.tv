@@ -1,0 +1,12 @@
+node_modules/
+dist/
+.npm-cache/
+.wrangler/
+.wrangler-state/
+.dev.vars*
+.env*
+!.env.example
+worker-configuration.d.ts
+coverage/
+*.log
+
