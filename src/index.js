@@ -11,6 +11,7 @@ import { handleMediaRoute } from './routes/media.js';
 import { handleThirdPartyRoute } from './routes/third-party.js';
 
 const routeHandlers = [handleAuthRoute, handleOAuthRoute, handlePlatformRoute, handleDataRoute, handleProfileRoute, handleRewardRoute, handleAiRoute, handleMediaRoute, handleThirdPartyRoute];
+const CLEAN_PAGE_NAMES = new Set(['home', 'multistreams', 'about', 'contact', 'blog', 'status', 'twitch', 'kick', 'youtube', 'rumble', 'guidelines', 'terms', 'privacy', 'dmca']);
 
 function securityHeaders(response) {
   const headers = new Headers(response.headers);
@@ -24,6 +25,11 @@ function securityHeaders(response) {
 export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
+    const legacyPage = url.pathname.match(/^\/([a-z0-9-]+)\.html$/i)?.[1]?.toLowerCase();
+    if (legacyPage && ['GET', 'HEAD'].includes(request.method) && (legacyPage === 'index' || CLEAN_PAGE_NAMES.has(legacyPage))) {
+      url.pathname = legacyPage === 'index' ? '/' : `/${legacyPage}`;
+      return Response.redirect(url.toString(), 308);
+    }
     if (/^\/profile\/[^/]+\/?$/.test(url.pathname) && ['GET', 'HEAD'].includes(request.method)) {
       const shellUrl = new URL('/multistreams.html', url.origin);
       const shellRequest = new Request(shellUrl, { method: request.method, headers: request.headers });

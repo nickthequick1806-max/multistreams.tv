@@ -6,13 +6,12 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "routes": [
-    { "pattern": "multistreams.tv/api/*", "zone_name": "multistreams.tv" },
-    { "pattern": "multistreams.tv/profile/*", "zone_name": "multistreams.tv" }
+    { "pattern": "multistreams.tv/*", "zone_name": "multistreams.tv" }
   ],
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*"]
+    "run_worker_first": ["/api/*", "/profile/*", "/*.html"]
   },
   "d1_databases": [
     {
