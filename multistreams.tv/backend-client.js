@@ -283,15 +283,6 @@
         params.delete('oauth'); params.delete('auth'); params.delete('status');
         history.replaceState({}, '', `${location.pathname}${params.toString() ? `?${params}` : ''}${location.hash}`);
       }
-      const profileMatch = location.pathname.match(/^\/profile\/([^/]+)\/?$/);
-      if (profileMatch) {
-        const username = decodeURIComponent(profileMatch[1]);
-        document.querySelectorAll('.dropdown-menu').forEach(menu => menu.classList.remove('active'));
-        document.getElementById('my-profile-modal')?.classList.add('active');
-        await window.viewProfile(username);
-        switchProfileTab?.('layouts');
-        document.title = `${username} | Multistreams.tv`;
-      }
     } catch (error) {
       notifyError(error, 'The production backend could not be reached.');
     }
@@ -817,6 +808,17 @@
       viewedProfileId = real.viewedProfile?.id || 'me'; clearProfileSearch(); hideFollowedUsersPanel(); renderMyProfile();
     } catch (error) { notifyError(error); }
   };
+  async function hydrateDirectProfilePath() {
+    const match = location.pathname.match(/^\/profile\/([^/]+)\/?$/);
+    if (!match) return;
+    const username = decodeURIComponent(match[1]);
+    document.querySelectorAll('.dropdown-menu').forEach(menu => menu.classList.remove('active'));
+    document.getElementById('my-profile-modal')?.classList.add('active');
+    await window.viewProfile(username);
+    switchProfileTab?.('layouts');
+    document.querySelector('#my-profile-modal .profile-modal-scroll')?.scrollTo({ top: 0 });
+    document.title = `${username} | Multistreams.tv`;
+  }
   window.openCommunitySubmitterProfile = async (event, username) => { event?.preventDefault(); event?.stopPropagation(); closeCommunityLayoutsModal(null, true); document.getElementById('my-profile-modal')?.classList.add('active'); await viewProfile(username); };
   window.toggleViewedProfileFollow = async () => {
     const profile = getViewedProfileRecord(); if (!profile || profile.isOwn) return;
@@ -902,5 +904,6 @@
   setInterval(() => { if (accountState.signedIn) loadConnectionsAndFollowing().catch(() => {}); }, 90_000);
 
   window.MS_API = { api, real, bootstrap, refreshSession, loadConnectionsAndFollowing, loadFeatured };
+  hydrateDirectProfilePath().catch(error => notifyError(error, 'This profile could not be loaded.'));
   bootstrap();
 })();
