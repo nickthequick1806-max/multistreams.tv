@@ -155,7 +155,7 @@ async function finishOAuth(request, env, platform, url) {
   const metadata = JSON.parse(challenge.metadata_json || '{}');
   if (metadata.platform !== platform) throw new HttpError(400, 'The OAuth provider did not match the original request.', 'oauth_state_invalid');
   await env.DB.prepare('DELETE FROM auth_challenges WHERE id = ?1').bind(state).run();
-  const destination = new URL(challenge.redirect_to || '/multistreams.html', env.APP_ORIGIN);
+  const destination = new URL(challenge.redirect_to || '/multistreams', env.APP_ORIGIN);
   if (error || !code) {
     destination.searchParams.set('oauth', platform);
     destination.searchParams.set('status', 'cancelled');
@@ -231,4 +231,3 @@ export async function handleOAuthRoute(request, env, url) {
   if (disconnectMatch && request.method === 'DELETE') return disconnect(request, env, disconnectMatch[1]);
   return null;
 }
-

@@ -24,6 +24,15 @@ function securityHeaders(response) {
 export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
+    if (/^\/profile\/[^/]+\/?$/.test(url.pathname) && ['GET', 'HEAD'].includes(request.method)) {
+      const shellUrl = new URL('/multistreams.html', url.origin);
+      const shellRequest = new Request(shellUrl, { method: request.method, headers: request.headers });
+      const shell = await env.ASSETS.fetch(shellRequest);
+      return securityHeaders(new Response(shell.body, {
+        status: shell.ok ? 200 : shell.status,
+        headers: shell.headers
+      }));
+    }
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     const requestId = request.headers.get('cf-ray') || randomId(10);
     try {

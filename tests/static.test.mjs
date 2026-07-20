@@ -21,5 +21,5 @@ test('all inline classic scripts and the backend client parse as JavaScript', ()
   assert.ok(scripts.length > 0);
   scripts.forEach((source, index) => assert.doesNotThrow(() => new vm.Script(source, { filename: `multistreams-inline-${index}.js` })));
   assert.doesNotThrow(() => new vm.Script(backendClient, { filename: 'backend-client.js' }));
-  assert.match(html, /<script src="backend-client\.js"><\/script>/);
+  assert.match(html, /<script src="\/backend-client\.js"><\/script>/);
 });

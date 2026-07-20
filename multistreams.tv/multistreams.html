@@ -7589,29 +7589,7 @@ function closeAdFreeModal(e, force = false) {
 }
 
 function connectAccount(platform) {
-  // Save that we're attempting to connect this platform
-  const key = platform.toLowerCase() + 'Connected';
-  localStorage.setItem(key, 'true');
-
-  // Redirect to auth page (update these URLs with your real ones later)
-  let authUrl = '';
-
-  switch (platform.toLowerCase()) {
-    case 'twitch':
-      authUrl = 'https://id.twitch.tv/oauth2/authorize?client_id=7t3owqbu0scbhco8xk02lsmz2pfpnf&redirect_uri=https://multistreams.tv&response_type=token&scope=user:read:email';
-      break;
-    case 'youtube':
-      authUrl = 'https://accounts.google.com/o/oauth2/v2/auth?client_id=203777902987-2ut1595f82sn65kelhljoe8epcanqjc8.apps.googleusercontent.com&redirect_uri=https://multistreams.tv&response_type=token&scope=https://www.googleapis.com/auth/youtube.readonly';
-      break;
-    case 'kick':
-      authUrl = 'https://id.kick.com/oauth/authorize?response_type=code&client_id=01KWD60X9P24C3GQ1MKG821GS0&redirect_uri=https%3A%2F%2Fmultistreams.tv%2F&scope=user%3Aread+channel%3Aread+chat%3Awrite&code_challenge=Hi0si3P79gROg8uYV8pqqaYACK8P_dbGn6fn-S2JXoQ&code_challenge_method=S256&state=3uCBvGOe6aJUl7-WJsAOirO3Sbf4AUgT';
-      break;
-    case 'rumble':
-      authUrl = 'https://auth.rumble.com/?theme=s&redirect_uri=https%3A%2F%2Fmultistreams.tv%2F&lang=en_US';
-  }
-
-  // Redirect user to the platform's auth page
-  window.location.href = authUrl;
+  showNotification(`${platform} connection services are still loading`, 'info', { position: 'bottom-right' });
 }
 
 // Settings
@@ -12828,12 +12806,18 @@ channelInput.addEventListener("input", async () => {
 
   showGlobalSearchLoading();
   searchTimeout = setTimeout(async () => {
-    const [twitchResults, kickResults, youtubeResults, rumbleResults] = await Promise.all([
-      searchTwitch(query),
-      searchKick(query),
-      searchYouTube(query),
-      searchRumble(query)
-    ]);
+    let twitchResults;
+    let kickResults;
+    let youtubeResults;
+    let rumbleResults;
+    if (typeof window.searchAllPlatforms === 'function') {
+      const grouped = await window.searchAllPlatforms(query);
+      ({ twitch: twitchResults, kick: kickResults, youtube: youtubeResults, rumble: rumbleResults } = grouped);
+    } else {
+      [twitchResults, kickResults, youtubeResults, rumbleResults] = await Promise.all([
+        searchTwitch(query), searchKick(query), searchYouTube(query), searchRumble(query)
+      ]);
+    }
     if (requestId !== searchRequestSequence || channelInput.value.trim() !== query) return;
     renderMultiPlatformSearchResults(query, twitchResults, kickResults, youtubeResults, rumbleResults);
   }, 350);
@@ -16661,6 +16645,6 @@ if (channels.length > 0 && !activeChat) {
 applyLanguage(settings.language || 'en');
 
 </script>
-<script src="backend-client.js"></script>
+<script src="/backend-client.js"></script>
 </body>
 </html>

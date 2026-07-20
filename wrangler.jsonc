@@ -6,7 +6,8 @@
   "compatibility_flags": ["nodejs_compat"],
   "workers_dev": true,
   "routes": [
-    { "pattern": "multistreams.tv/api/*", "zone_name": "multistreams.tv" }
+    { "pattern": "multistreams.tv/api/*", "zone_name": "multistreams.tv" },
+    { "pattern": "multistreams.tv/profile/*", "zone_name": "multistreams.tv" }
   ],
   "assets": {
     "directory": "./dist",

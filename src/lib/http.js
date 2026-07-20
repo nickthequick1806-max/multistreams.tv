@@ -76,7 +76,7 @@ export function clearSessionCookie(env) {
   return sessionCookie(env, '', 0);
 }
 
-export function safeRedirectPath(value, fallback = '/multistreams.html') {
+export function safeRedirectPath(value, fallback = '/multistreams') {
   const path = String(value || '');
   return path.startsWith('/') && !path.startsWith('//') ? path : fallback;
 }

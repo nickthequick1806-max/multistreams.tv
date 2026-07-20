@@ -443,19 +443,104 @@ export async function featured(env, limit = 20) {
   return settled.filter(result => result.status === 'fulfilled').map(result => result.value).sort((a, b) => Number(b.live) - Number(a.live) || b.viewers - a.viewers);
 }
 
+async function creatorSearch(env, path) {
+  if (!env.SCRAPECREATORS_API_KEY) throw new HttpError(503, 'The public search fallback is not configured.', 'provider_not_configured');
+  const response = await fetch(`https://api.scrapecreators.com${path}`, {
+    headers: { 'x-api-key': env.SCRAPECREATORS_API_KEY, accept: 'application/json' }
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new HttpError(response.status === 429 ? 429 : 502, 'The public search fallback failed.', 'provider_api_error');
+  return payload;
+}
+
+async function searchTwitchChannels(env, query, limit) {
+  const search = await twitchApi(env, `/search/channels?query=${encodeURIComponent(query)}&first=${limit}`);
+  const users = await twitchUsers(env, (search.data || []).map(item => item.id));
+  const byId = new Map(users.map(item => [item.id, item]));
+  return (search.data || []).map(item => ({
+    platform: 'twitch', id: item.id, name: item.display_name, username: item.broadcaster_login,
+    avatar: byId.get(item.id)?.profile_image_url || item.thumbnail_url || '', banner: byId.get(item.id)?.offline_image_url || '',
+    live: Boolean(item.is_live), category: item.game_name || '', viewers: 0,
+    url: `https://www.twitch.tv/${encodeURIComponent(item.broadcaster_login)}`
+  }));
+}
+
+function normalizeCreatorYoutubeChannel(item) {
+  const id = item.id || item.channelId || '';
+  const username = String(item.handle || item.channelName || item.title || id).replace(/^@/, '');
+  return {
+    platform: 'youtube', id, name: item.channelName || item.title || username, username,
+    avatar: item.thumbnail || item.avatar || '', banner: '', live: false, category: '', viewers: 0,
+    url: id ? `https://www.youtube.com/channel/${encodeURIComponent(id)}` : `https://www.youtube.com/@${encodeURIComponent(username)}`
+  };
+}
+
+async function searchYoutubeChannels(env, query, limit) {
+  try {
+    const search = await youtubeApi(env, `/search?part=snippet&type=channel&maxResults=${limit}&q=${encodeURIComponent(query)}`);
+    return (search.items || []).map(item => ({
+      platform: 'youtube', id: item.id?.channelId, name: item.snippet?.channelTitle || item.snippet?.title || '',
+      username: item.snippet?.channelTitle || '', avatar: item.snippet?.thumbnails?.high?.url || '', banner: '',
+      live: false, category: '', viewers: 0,
+      url: `https://www.youtube.com/channel/${encodeURIComponent(item.id?.channelId || '')}`
+    }));
+  } catch (error) {
+    const fallback = await creatorSearch(env, `/v1/youtube/search?query=${encodeURIComponent(query)}&type=channels`);
+    return (fallback.channels || []).slice(0, limit).map(normalizeCreatorYoutubeChannel);
+  }
+}
+
+async function searchKickChannels(env, query, limit) {
+  const normalized = query.toLowerCase();
+  const live = await kickLive(env, 100);
+  const matches = live.filter(item => `${item.name} ${item.username}`.toLowerCase().includes(normalized)).slice(0, limit);
+  if (!matches.some(item => item.username.toLowerCase() === normalized)) {
+    try {
+      const exact = await channelDetail(env, 'kick', query);
+      matches.unshift(exact);
+    } catch {}
+  }
+  return matches.slice(0, limit).map(item => ({
+    platform: 'kick', id: item.id, name: item.name, username: item.username, avatar: item.avatar || '', banner: item.banner || '',
+    live: Boolean(item.live), category: item.category || '', viewers: Number(item.viewers) || 0,
+    url: item.url || `https://kick.com/${encodeURIComponent(item.username)}`
+  }));
+}
+
+async function searchRumbleChannels(env, query, limit) {
+  const payload = await creatorSearch(env, `/v1/rumble/search?query=${encodeURIComponent(query)}`);
+  const candidates = [...(payload.channels || []), ...(payload.lives || []), ...(payload.videos || []).map(item => item.channel || {})];
+  const unique = new Map();
+  for (const item of candidates) {
+    const username = item.handle || item.slug || item.username || item.name || '';
+    if (!username) continue;
+    const key = username.toLowerCase();
+    if (!unique.has(key)) unique.set(key, {
+      platform: 'rumble', id: String(item.id || username), name: item.name || item.title || username, username,
+      avatar: item.thumbnail || item.avatar || '', banner: '', live: Boolean(item.live || item.is_live),
+      category: item.category || '', viewers: Number(item.viewers || item.watching_now || 0),
+      url: item.url || `https://rumble.com/c/${encodeURIComponent(username)}`
+    });
+  }
+  return [...unique.values()].slice(0, limit);
+}
+
 export async function globalSearch(env, query, limit = 20) {
   const q = String(query || '').trim();
   if (q.length < 2) return [];
-  const results = [];
-  const twitchSearch = await twitchApi(env, `/search/channels?query=${encodeURIComponent(q)}&first=${Math.min(10, limit)}`);
-  const twitchUsersData = await twitchUsers(env, (twitchSearch.data || []).map(item => item.id));
-  const twitchUsersById = new Map(twitchUsersData.map(item => [item.id, item]));
-  results.push(...(twitchSearch.data || []).map(item => ({ platform: 'twitch', id: item.id, name: item.display_name, username: item.broadcaster_login, avatar: twitchUsersById.get(item.id)?.profile_image_url || item.thumbnail_url || '', banner: twitchUsersById.get(item.id)?.offline_image_url || '', live: Boolean(item.is_live), category: item.game_name || '', url: `https://www.twitch.tv/${encodeURIComponent(item.broadcaster_login)}` })));
-  try {
-    const youtubeSearch = await youtubeApi(env, `/search?part=snippet&type=channel&maxResults=${Math.min(10, limit)}&q=${encodeURIComponent(q)}`);
-    results.push(...(youtubeSearch.items || []).map(item => ({ platform: 'youtube', id: item.id?.channelId, name: item.snippet?.channelTitle || item.snippet?.title || '', username: item.snippet?.channelTitle || '', avatar: item.snippet?.thumbnails?.high?.url || '', banner: '', live: false, category: '', url: `https://www.youtube.com/channel/${encodeURIComponent(item.id?.channelId || '')}` })));
-  } catch {}
-  return results.slice(0, limit);
+  const perPlatform = clampInt(Math.ceil(Number(limit || 20) / 4), 2, 10, 5);
+  const cacheKey = `search:global:v2:${q.toLowerCase()}:${perPlatform}`;
+  const cached = await cacheGet(env, cacheKey);
+  if (cached) return cached;
+  const settled = await Promise.allSettled([
+    searchTwitchChannels(env, q, perPlatform),
+    searchYoutubeChannels(env, q, perPlatform),
+    searchKickChannels(env, q, perPlatform),
+    searchRumbleChannels(env, q, perPlatform)
+  ]);
+  const results = settled.flatMap(result => result.status === 'fulfilled' ? result.value : []);
+  await cachePut(env, cacheKey, results, 120);
+  return results;
 }
 
 export { PLATFORM_CAPABILITIES, channelDetail };
