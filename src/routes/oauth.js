@@ -25,6 +25,16 @@ const OAUTH = {
   }
 };
 
+const GOOGLE_YOUTUBE_PURPOSE = 'youtube-connect';
+
+function connectionPlatform(platform, purpose) {
+  return platform === 'google' && purpose === GOOGLE_YOUTUBE_PURPOSE ? 'youtube' : platform;
+}
+
+function requestedScopes(platform, purpose) {
+  return connectionPlatform(platform, purpose) === 'youtube' ? OAUTH.youtube.scopes : OAUTH[platform].scopes;
+}
+
 function clientCredentials(env, platform) {
   if (platform === 'twitch') return { id: env.TWITCH_CLIENT_ID, secret: env.TWITCH_CLIENT_SECRET };
   if (platform === 'kick') return { id: env.KICK_CLIENT_ID, secret: env.KICK_CLIENT_SECRET };
@@ -39,8 +49,11 @@ async function startOAuth(request, env, platform, url) {
   const config = OAUTH[platform];
   if (!config) throw new HttpError(404, 'This platform does not provide a supported OAuth connection.', 'oauth_unsupported');
   const purpose = platform === 'google' ? String(url.searchParams.get('purpose') || 'login') : 'connect';
-  let session = await optionalSession(request, env);
-  if (purpose === 'connect' && !session) throw new HttpError(401, 'Sign in before connecting a platform.', 'authentication_required');
+  if (platform === 'google' && !['login', GOOGLE_YOUTUBE_PURPOSE].includes(purpose)) {
+    throw new HttpError(400, 'This Google account flow is not supported.', 'oauth_purpose_invalid');
+  }
+  const session = await optionalSession(request, env);
+  if (purpose !== 'login' && !session) throw new HttpError(401, 'Sign in before connecting a platform.', 'authentication_required');
   const credentials = clientCredentials(env, platform);
   if (!credentials.id || !credentials.secret) throw new HttpError(503, `${platform} OAuth is not configured.`, 'oauth_not_configured');
   const state = randomId(24);
@@ -54,7 +67,7 @@ async function startOAuth(request, env, platform, url) {
     client_id: credentials.id,
     redirect_uri: callbackUrl(env, platform),
     response_type: 'code',
-    scope: config.scopes.join(' '),
+    scope: requestedScopes(platform, purpose).join(' '),
     state,
     code_challenge: await sha256(verifier),
     code_challenge_method: 'S256'
@@ -154,15 +167,16 @@ async function finishOAuth(request, env, platform, url) {
   if (!challenge) throw new HttpError(400, 'The OAuth request expired or could not be verified.', 'oauth_state_invalid');
   const metadata = JSON.parse(challenge.metadata_json || '{}');
   if (metadata.platform !== platform) throw new HttpError(400, 'The OAuth provider did not match the original request.', 'oauth_state_invalid');
+  const connectedPlatform = connectionPlatform(platform, metadata.purpose);
   await env.DB.prepare('DELETE FROM auth_challenges WHERE id = ?1').bind(state).run();
   const destination = new URL(challenge.redirect_to || '/multistreams', env.APP_ORIGIN);
   if (error || !code) {
-    destination.searchParams.set('oauth', platform);
+    destination.searchParams.set('oauth', connectedPlatform);
     destination.searchParams.set('status', 'cancelled');
     return Response.redirect(destination.toString(), 302);
   }
   const tokens = await exchangeCode(env, platform, code, challenge.verifier);
-  const identity = await fetchIdentity(platform, tokens.access_token, env);
+  const identity = await fetchIdentity(connectedPlatform, tokens.access_token, env);
   if (platform === 'google' && metadata.purpose === 'login') {
     const result = await finishGoogleLogin(request, env, identity);
     destination.searchParams.set('auth', 'success');
@@ -175,12 +189,14 @@ async function finishOAuth(request, env, platform, url) {
     (id, user_id, platform, platform_user_id, platform_username, access_token, refresh_token, token_type, scopes, expires_at, metadata_json, created_at, updated_at)
     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
     ON CONFLICT(user_id, platform) DO UPDATE SET platform_user_id = excluded.platform_user_id, platform_username = excluded.platform_username,
-      access_token = excluded.access_token, refresh_token = excluded.refresh_token, token_type = excluded.token_type, scopes = excluded.scopes,
+      access_token = excluded.access_token,
+      refresh_token = CASE WHEN excluded.refresh_token != '' THEN excluded.refresh_token ELSE oauth_connections.refresh_token END,
+      token_type = excluded.token_type, scopes = excluded.scopes,
       expires_at = excluded.expires_at, metadata_json = excluded.metadata_json, updated_at = excluded.updated_at`)
-    .bind(randomId(), challenge.user_id, platform, identity.id, identity.username, await encrypt(tokens.access_token, env.TOKEN_ENCRYPTION_KEY),
-      tokens.refresh_token ? await encrypt(tokens.refresh_token, env.TOKEN_ENCRYPTION_KEY) : '', tokens.token_type || 'Bearer', tokens.scope || OAUTH[platform].scopes.join(' '),
+    .bind(randomId(), challenge.user_id, connectedPlatform, identity.id, identity.username, await encrypt(tokens.access_token, env.TOKEN_ENCRYPTION_KEY),
+      tokens.refresh_token ? await encrypt(tokens.refresh_token, env.TOKEN_ENCRYPTION_KEY) : '', tokens.token_type || 'Bearer', tokens.scope || requestedScopes(platform, metadata.purpose).join(' '),
       expiresAt, JSON.stringify({ avatarUrl: identity.avatarUrl || '', bannerUrl: identity.bannerUrl || '' }), timestamp).run();
-  destination.searchParams.set('oauth', platform);
+  destination.searchParams.set('oauth', connectedPlatform);
   destination.searchParams.set('status', 'connected');
   return Response.redirect(destination.toString(), 302);
 }

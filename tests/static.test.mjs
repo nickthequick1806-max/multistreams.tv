@@ -6,6 +6,7 @@ import vm from 'node:vm';
 const html = await readFile(new URL('../multistreams.tv/multistreams.html', import.meta.url), 'utf8');
 const backendClient = await readFile(new URL('../multistreams.tv/backend-client.js', import.meta.url), 'utf8');
 const contactClient = await readFile(new URL('../multistreams.tv/contact.js', import.meta.url), 'utf8');
+const oauthRoute = await readFile(new URL('../src/routes/oauth.js', import.meta.url), 'utf8');
 
 test('no provider API keys, OAuth bearer tokens, or Discord webhooks remain in frontend source', () => {
   assert.doesNotMatch(html, /AIza[0-9A-Za-z_-]{20,}/);
@@ -30,4 +31,11 @@ test('platform-aware UI fallbacks and category metadata rules are present', () =
   assert.match(backendClient, /hasViewerCount/);
   assert.match(backendClient, /\['kick', 'youtube'\]\.includes\(currentBrowsePlatform\)/);
   assert.doesNotMatch(backendClient, /Rumble did not recognize that Live Stream API URL/);
+});
+
+test('YouTube account connection reuses the Google profile OAuth entry point', () => {
+  assert.match(backendClient, /\/api\/oauth\/google\/start\?purpose=youtube-connect&returnTo=\/multistreams/);
+  assert.match(oauthRoute, /const GOOGLE_YOUTUBE_PURPOSE = 'youtube-connect'/);
+  assert.match(oauthRoute, /fetchIdentity\(connectedPlatform, tokens\.access_token, env\)/);
+  assert.match(oauthRoute, /destination\.searchParams\.set\('oauth', connectedPlatform\)/);
 });

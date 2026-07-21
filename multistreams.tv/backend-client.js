@@ -503,7 +503,11 @@
       }, 700);
       return;
     }
-    if (!['twitch', 'youtube', 'kick'].includes(platform)) return;
+    if (platform === 'youtube') {
+      location.href = '/api/oauth/google/start?purpose=youtube-connect&returnTo=/multistreams';
+      return;
+    }
+    if (!['twitch', 'kick'].includes(platform)) return;
     location.href = `/api/oauth/${platform}/start?returnTo=/multistreams`;
   };
 
