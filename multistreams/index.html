@@ -4554,6 +4554,8 @@ header {
 .security-device-copy strong, .security-device-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .security-device-copy strong { color: var(--text-main); font-size: 10px; }
 .security-device-copy span { margin-top: 3px; color: var(--text-muted); font-size: 8.5px; }
+.security-device-signout { flex: 0 0 auto; padding: 6px 9px; border: 1px solid var(--border); border-radius: 7px; background: transparent; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 8.5px; font-weight: 750; }
+.security-device-signout:hover { border-color: #fb7185; background: rgba(251,113,133,.1); color: #fb7185; }
 .security-current-badge { padding: 3px 6px; border: 1px solid color-mix(in srgb, #22c55e 40%, var(--border)); border-radius: 5px; color: #86efac; font-size: 8px; font-weight: 800; text-transform: uppercase; }
 .security-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; margin-top: 14px; }
 .security-action-button { min-height: 40px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-soft); color: var(--text-main); cursor: pointer; font: inherit; font-size: 11px; font-weight: 760; }
@@ -6246,7 +6248,6 @@ header {
       </div>
       <form class="ai-search-composer" onsubmit="submitAISearch(event)">
         <input id="ai-search-input" type="text" autocomplete="off" placeholder="Ask anything about streams, creators, clips, or live events..." aria-label="AI stream search prompt">
-        <select id="ai-search-model" class="ai-search-model-select" onchange="changeAISearchModel(this.value)" aria-label="Gemini model"></select>
         <button id="ai-search-send" class="ai-search-send" type="submit" aria-label="Send AI search"><i class="fa-solid fa-arrow-up" aria-hidden="true"></i></button>
       </form>
     </div>
@@ -6544,12 +6545,12 @@ let settings = {
   theme: "dark",
   accent: "#38bdf8",
   dragFromAnywhere: false,
-  notificationsEnabled: false,
+  notificationsEnabled: true,
   liveNotificationsEnabled: true,
   roundedCorners: true,
   tooltipsEnabled: true,
   castToTV: false,
-  uiSounds: false,
+  uiSounds: true,
   language: "en",
   bio: "",
   socialLinks: {},
@@ -6606,14 +6607,13 @@ let selectedFeedbackCategory = 'general';
 */
 const AI_SEARCH_CONFIG = {
   apiKey: '',
-  model: 'gemini-3.5-flash',
+  model: 'gemini-3.6-flash',
   models: [
-    { id: 'gemini-3.5-flash', label: 'Gemini 3.5 Flash' },
-    { id: 'gemini-3-flash-preview', label: 'Gemini 3 Flash Preview' }
+    { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash' }
   ],
   useGoogleSearch: true,
   allowUngroundedFallback: true,
-  allowModelFallback: true
+  allowModelFallback: false
 };
 const AI_SEARCH_HISTORY_KEY = 'multistreams_ai_search_history_v1';
 const AI_SEARCH_MODEL_KEY = 'multistreams_ai_search_model_v1';
@@ -6796,9 +6796,9 @@ function getYouTubeID(input) {
 // Search for channel ID using channel name
 async function searchYouTubeChannelId(query) {
     try {
-        const res = await fetch(`/api/search/global?q=${encodeURIComponent(query)}&platform=youtube&limit=1`);
+        const res = await fetch(`/api/search/global?q=${encodeURIComponent(query)}&limit=20`);
         const data = await res.json();
-        return data.items?.[0]?.snippet?.channelId || null;
+        return data.items?.find(item => item.platform === 'youtube')?.id || null;
     } catch (e) {
         return null;
     }
@@ -6809,7 +6809,7 @@ async function getLiveVideoId(channelId) {
     try {
         const res = await fetch(`/api/browse/youtube?view=live&channelId=${encodeURIComponent(channelId)}&limit=1`);
         const data = await res.json();
-        return data.items?.[0]?.id?.videoId || null;
+        return data.items?.[0]?.id || null;
     } catch (e) {
         return null;
     }
@@ -6818,9 +6818,9 @@ async function getLiveVideoId(channelId) {
 // Get channel name from a video ID
 async function getYouTubeChannelName(videoId) {
     try {
-        const res = await fetch(`/api/browse/youtube?view=clips&q=${encodeURIComponent(videoId)}&limit=1`);
+        const res = await fetch(`/api/channel/youtube/${encodeURIComponent(videoId)}`);
         const data = await res.json();
-        return data.items?.[0]?.snippet?.channelTitle || null;
+        return data.channel?.name || null;
     } catch (e) {
         return null;
     }
@@ -6831,7 +6831,7 @@ async function getYouTubeChannelNameFromChannelId(channelId) {
     try {
         const res = await fetch(`/api/channel/youtube/${encodeURIComponent(channelId)}`);
         const data = await res.json();
-        return data.items?.[0]?.snippet?.title || null;
+        return data.channel?.name || null;
     } catch (e) {
         return null;
     }
@@ -8142,15 +8142,6 @@ function sendFeedback() {
 
   const feedbackCategoryLabels = { general: 'General', bug: 'Bug Report', feature: 'Feature Request' };
   embed.fields.push({ name: 'Support Category', value: feedbackCategoryLabels[selectedFeedbackCategory] || 'General', inline: true });
-
-  if (rating > 0) {
-    const starsText = '★'.repeat(rating) + '☆'.repeat(5 - rating);
-    embed.fields.push({
-      name: "⭐ Experience Rating",
-      value: `**${rating}/5**  ${starsText}`,
-      inline: true
-    });
-  }
 
   if (message) {
     embed.fields.push({
@@ -11045,7 +11036,7 @@ function renderUpdateNotifications(container) {
     card.className = 'notification-card notification-card-hover notification-menu-card';
 
     card.innerHTML = `
-      <div class="notification-menu-icon" aria-hidden="true"><i class="fa-solid fa-sparkles"></i></div>
+      <div class="notification-menu-icon" aria-hidden="true"><i class="fa-solid fa-circle-arrow-up"></i></div>
       <div class="notification-menu-copy">
         <strong>${update.title}</strong>
         <p>${update.description}</p>
@@ -11354,10 +11345,10 @@ async function handleYouTubeOfflineBanner(frame, ch) {
 
   try {
     // Check if this YouTube video is actually live
-    const res = await fetch(`/api/browse/youtube?view=clips&q=${encodeURIComponent(ch.name)}&limit=1`);
+    const res = await fetch(`/api/channel/youtube/${encodeURIComponent(ch.name)}`);
     const data = await res.json();
-    
-    const isLive = data.items?.[0]?.snippet?.liveBroadcastContent === "live";
+    const requestedVideo = data.channel?.requestedVideo;
+    const isLive = requestedVideo ? requestedVideo.live === true : data.channel?.live === true;
 
     if (!isLive) {
       // Create and show offline banner
@@ -11388,11 +11379,10 @@ async function handleYouTubeOfflineBanner(frame, ch) {
 
 async function checkYouTubeLiveStatus(videoId) {
   try {
-    const res = await fetch(
-      `/api/browse/youtube?view=clips&q=${encodeURIComponent(videoId)}&limit=1`
-    );
+    const res = await fetch(`/api/channel/youtube/${encodeURIComponent(videoId)}`);
     const data = await res.json();
-    return data.items?.[0]?.snippet?.liveBroadcastContent === "live";
+    const requestedVideo = data.channel?.requestedVideo;
+    return requestedVideo ? requestedVideo.live === true : data.channel?.live === true;
   } catch (err) {
     console.error("YouTube live check failed:", err);
     return false;
@@ -11947,6 +11937,9 @@ function createYouTubeStream(name, displayName, platform) {
 function finishAddingStream(newStream, skipSave) {
   channelInput.value = "";
   searchResults.style.display = "none";
+  if (clearSearchBtn) clearSearchBtn.style.display = "none";
+  const addLinkButton = document.getElementById('add-link-btn');
+  if (addLinkButton) addLinkButton.style.display = "none";
 
   renderStreams();
   renderChatOptions();
@@ -12083,6 +12076,10 @@ function expandStreamById(id) {
 
 function setLayout(type, options = {}) {
   const normalizedType = normalizeLayoutType(type);
+  const enteringGrid = currentLayout !== 'grid' && normalizedType === 'grid';
+  if (enteringGrid) channels.forEach(channel => {
+    if (channel.platform === 'kick') channel.muted = true;
+  });
   currentLayout = normalizedType;
   document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('active'));
   document.getElementById('layout-picker-trigger')?.setAttribute('aria-expanded', 'false');
@@ -12090,6 +12087,12 @@ function setLayout(type, options = {}) {
     option.setAttribute('aria-pressed', String(option.dataset.layoutOption === normalizedType));
   });
   renderStreams();
+  if (enteringGrid) requestAnimationFrame(() => {
+    channels.filter(channel => channel.platform === 'kick').forEach(channel => {
+      const iframe = streamsEl.querySelector(`.stream-frame[data-id="${CSS.escape(channel.id)}"] iframe`);
+      if (iframe) iframe.src = `https://player.kick.com/${encodeURIComponent(channel.name)}?autoplay=true&muted=true`;
+    });
+  });
   if (!options.skipSave) saveState();
   if (!options.silent && settings.notificationsEnabled) showNotification(`Switched to ${normalizedType} layout`, 'layout');
   
@@ -12143,7 +12146,11 @@ function renderStreams() {
   }
 
   // Update Container Layout
-  if (currentLayout === "grid") {
+  if (channels.length === 1) {
+    streamsEl.style.gridTemplateColumns = "1fr";
+    streamsEl.style.gridTemplateRows = "1fr";
+    streamsEl.style.alignContent = "stretch";
+  } else if (currentLayout === "grid") {
     streamsEl.style.gridTemplateColumns = "repeat(auto-fit, minmax(400px, 1fr))";
     streamsEl.style.gridTemplateRows = "";
     streamsEl.style.alignContent = "start";
@@ -12319,7 +12326,12 @@ if (settings.dragFromAnywhere) {
     // Update Order & Layout Styles
     frame.style.order = index;
 
-    if (currentLayout === "horizontal") {
+    if (channels.length === 1) {
+      frame.style.gridColumn = "1";
+      frame.style.gridRow = "1";
+      frame.style.height = "100%";
+      frame.style.aspectRatio = "auto";
+    } else if (currentLayout === "horizontal") {
       if (index === 0) {
         frame.style.gridColumn = "1 / -1";
         frame.style.gridRow = "1";
@@ -16669,6 +16681,6 @@ if (channels.length > 0 && !activeChat) {
 applyLanguage(settings.language || 'en');
 
 </script>
-<script src="/backend-client.js?v=20260720.4"></script>
+<script src="/backend-client.js?v=20260723.1"></script>
 </body>
 </html>

@@ -1,82 +1,1708 @@
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css">
-
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multistreams.tv | Status</title>
-    <meta name="description" content="Watch multiple Twitch, YouTube, Kick and Rumble streams at once with Multistreams.tv">
-    <meta name="theme-color" content="#2f81d4">
-    <meta name="color-scheme" content="dark">
-    <link rel="canonical" href=".">
-    <link rel="icon" href="https://i.postimg.cc/sD3Kq2vQ/favicon.png" sizes="any">
-    <link rel="icon" type="image/png" sizes="32x32" href="https://i.postimg.cc/bNqLWvsG/favicon-32.png">
-    <link rel="apple-touch-icon" href="https://i.postimg.cc/VLz4pNd6/apple-touch-icon.png">
-    <link rel="icon" type="image/png" href="https://i.postimg.cc/HsT3RLVn/multistreams-icon.png">
-    <link rel="manifest" href="https://multistreams.tv/manifest.webmanifest">
-    <meta name="mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-capable" content="yes">
-    <meta name="apple-mobile-web-app-title" content="Multistreams.tv">
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-    <meta property="og:site_name" content="Multistreams.tv">
-    <meta property="og:type" content="website">
-    <meta property="og:url" content="https://multistreams.tv/">
-    <meta property="og:title" content="Multistreams.tv - Stream Multiviewer">
-    <meta property="og:description" content="Watch Twitch, YouTube, Kick and Rumble streams at once in a resizable grid with synced chat and saved layouts.">
-    <meta property="og:image" content="https://i.postimg.cc/zXqp6fVh/og-image.png">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
-    <meta property="og:image:alt" content="Multistreams.tv multiview layout with Twitch, YouTube, Kick and Rumble streams">
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="Multistreams.tv - Stream Multiviewer">
-    <meta name="twitter:description" content="Watch Twitch, YouTube, Kick, and Rumble streams at once in a resizable grid with synced chat and saved layouts.">
-    <meta name="twitter:image" content="https://i.postimg.cc/zXqp6fVh/og-image.png">
-  <link rel="stylesheet" href="styles.css" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <title>Multistreams.tv | Status</title>
+
+  <meta
+    name="description"
+    content="View the current operational status, uptime history, and service updates for Multistreams.tv."
+  >
+  <meta name="theme-color" content="#2f81d4">
+  <meta name="color-scheme" content="dark">
+
+  <link rel="canonical" href="https://multistreams.tv//status">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+    rel="stylesheet"
+  >
+
+  <link
+    rel="stylesheet"
+    href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css"
+  >
+
+  <link
+    rel="icon"
+    type="image/png"
+    href="https://i.postimg.cc/HsT3RLVn/multistreams-icon.png"
+  >
+
+  <link
+    rel="apple-touch-icon"
+    href="https://i.postimg.cc/VLz4pNd6/apple-touch-icon.png"
+  >
+
+  <link
+    rel="manifest"
+    href="https://multistreams.tv/manifest.webmanifest"
+  >
+
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Multistreams.tv">
+  <meta
+    name="apple-mobile-web-app-status-bar-style"
+    content="black-translucent"
+  >
+
+  <meta property="og:site_name" content="Multistreams.tv">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://multistreams.tv//status">
+  <meta property="og:title" content="Multistreams.tv | Service Status">
+  <meta
+    property="og:description"
+    content="Check the current availability and operational status of Multistreams.tv."
+  >
+  <meta
+    property="og:image"
+    content="https://i.postimg.cc/zXqp6fVh/og-image.png"
+  >
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Multistreams.tv | Service Status">
+  <meta
+    name="twitter:description"
+    content="Check the current availability and operational status of Multistreams.tv."
+  >
+  <meta
+    name="twitter:image"
+    content="https://i.postimg.cc/zXqp6fVh/og-image.png"
+  >
+
+  <style>
+    :root {
+      --status-blue: #2f81d4;
+      --status-blue-light: #69b7ff;
+      --status-background: #05070a;
+      --status-surface: #0b0f15;
+      --status-surface-light: #10161f;
+      --status-border: rgba(255, 255, 255, 0.08);
+      --status-border-hover: rgba(105, 183, 255, 0.22);
+      --status-text: #f4f7fb;
+      --status-muted: #8995a5;
+      --status-green: #36d483;
+      --status-yellow: #f4bd50;
+      --status-orange: #ef8d45;
+      --status-red: #f05d68;
+      --container-width: 1180px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow-x: hidden;
+      background: var(--status-background);
+      color: var(--status-text);
+      font-family: "Inter", sans-serif;
+    }
+
+    a {
+      color: inherit;
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    .container {
+      width: min(var(--container-width), calc(100% - 40px));
+      margin: 0 auto;
+    }
+
+    .site-header {
+      position: sticky;
+      z-index: 100;
+      top: 0;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+      background: rgba(5, 7, 10, 0.8);
+      backdrop-filter: blur(18px);
+      -webkit-backdrop-filter: blur(18px);
+    }
+
+    .header-inner {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      min-height: 72px;
+      gap: 20px;
+    }
+
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 11px;
+      min-width: 0;
+      color: #ffffff;
+      text-decoration: none;
+    }
+
+    .brand-mark {
+      width: 34px;
+      height: 34px;
+      object-fit: contain;
+    }
+
+    .brand-name {
+      font-size: 19px;
+      font-weight: 700;
+      letter-spacing: -0.035em;
+      white-space: nowrap;
+    }
+
+    .brand-white {
+      color: #ffffff;
+    }
+
+    .brand-tv {
+      color: var(--status-blue-light);
+    }
+
+    .header-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .icon-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      min-height: 42px;
+      padding: 0 15px;
+      border: 1px solid rgba(105, 183, 255, 0.2);
+      border-radius: 11px;
+      background:
+        linear-gradient(
+          135deg,
+          rgba(47, 129, 212, 0.16),
+          rgba(47, 129, 212, 0.08)
+        );
+      color: #dcebfa;
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      transition:
+        transform 0.2s ease,
+        border-color 0.2s ease,
+        background 0.2s ease;
+    }
+
+    .icon-btn:hover {
+      border-color: rgba(105, 183, 255, 0.4);
+      background:
+        linear-gradient(
+          135deg,
+          rgba(47, 129, 212, 0.25),
+          rgba(47, 129, 212, 0.12)
+        );
+      transform: translateY(-2px);
+    }
+
+    .status-page-main {
+      position: relative;
+      min-height: 100vh;
+      overflow: hidden;
+      padding: 82px 20px 110px;
+      background:
+        radial-gradient(
+          circle at 50% -10%,
+          rgba(47, 129, 212, 0.18),
+          transparent 35%
+        ),
+        linear-gradient(180deg, #080b10 0%, #05070a 100%);
+      color: var(--status-text);
+    }
+
+    .status-background {
+      position: absolute;
+      inset: 0;
+      overflow: hidden;
+      pointer-events: none;
+    }
+
+    .status-grid {
+      position: absolute;
+      inset: 0;
+      opacity: 0.21;
+      background-image:
+        linear-gradient(
+          rgba(255, 255, 255, 0.025) 1px,
+          transparent 1px
+        ),
+        linear-gradient(
+          90deg,
+          rgba(255, 255, 255, 0.025) 1px,
+          transparent 1px
+        );
+      background-size: 44px 44px;
+      mask-image: linear-gradient(
+        to bottom,
+        black,
+        transparent 82%
+      );
+      -webkit-mask-image: linear-gradient(
+        to bottom,
+        black,
+        transparent 82%
+      );
+    }
+
+    .status-orb {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(110px);
+      animation: statusOrbFloat 9s ease-in-out infinite alternate;
+    }
+
+    .status-orb-one {
+      top: 80px;
+      left: 15%;
+      width: 320px;
+      height: 320px;
+      background: rgba(47, 129, 212, 0.11);
+    }
+
+    .status-orb-two {
+      right: 8%;
+      bottom: 180px;
+      width: 280px;
+      height: 280px;
+      background: rgba(54, 212, 131, 0.06);
+      animation-delay: -4s;
+    }
+
+    .status-page-container {
+      position: relative;
+      z-index: 2;
+      width: min(980px, 100%);
+      margin: 0 auto;
+    }
+
+    .status-heading {
+      display: flex;
+      align-items: center;
+      gap: 22px;
+      margin-bottom: 36px;
+    }
+
+    .status-logo {
+      display: grid;
+      flex: 0 0 auto;
+      width: 78px;
+      height: 78px;
+      place-items: center;
+      border: 1px solid rgba(105, 183, 255, 0.22);
+      border-radius: 22px;
+      background:
+        linear-gradient(
+          145deg,
+          rgba(47, 129, 212, 0.18),
+          rgba(47, 129, 212, 0.05)
+        );
+      box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.08),
+        0 20px 45px rgba(0, 0, 0, 0.3),
+        0 0 35px rgba(47, 129, 212, 0.08);
+    }
+
+    .status-logo img {
+      width: 45px;
+      height: 45px;
+      object-fit: contain;
+    }
+
+    .status-heading-content {
+      min-width: 0;
+    }
+
+    .status-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 9px;
+      color: #91caff;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .status-label-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--status-green);
+      box-shadow: 0 0 12px rgba(54, 212, 131, 0.75);
+      animation: statusDotPulse 2s ease-in-out infinite;
+    }
+
+    .status-heading h1 {
+      margin: 0;
+      color: #ffffff;
+      font-size: clamp(31px, 5vw, 48px);
+      line-height: 1.08;
+      letter-spacing: -0.042em;
+    }
+
+    .status-heading p {
+      max-width: 650px;
+      margin: 11px 0 0;
+      color: var(--status-muted);
+      font-size: 15px;
+      line-height: 1.65;
+    }
+
+    .overall-status-card {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 25px;
+      overflow: hidden;
+      margin-bottom: 20px;
+      padding: 25px 27px;
+      border: 1px solid rgba(54, 212, 131, 0.19);
+      border-radius: 18px;
+      background:
+        linear-gradient(
+          110deg,
+          rgba(54, 212, 131, 0.12),
+          rgba(54, 212, 131, 0.035)
+        ),
+        #0a100f;
+      box-shadow:
+        0 24px 60px rgba(0, 0, 0, 0.28),
+        inset 0 1px 0 rgba(255, 255, 255, 0.035);
+    }
+
+    .overall-status-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -40%;
+      width: 25%;
+      height: 100%;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.04),
+        transparent
+      );
+      transform: skewX(-18deg);
+      animation: statusBannerShine 7s ease-in-out infinite;
+    }
+
+    .overall-status-left {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .overall-status-icon {
+      display: grid;
+      flex: 0 0 auto;
+      width: 45px;
+      height: 45px;
+      place-items: center;
+      border: 1px solid rgba(54, 212, 131, 0.22);
+      border-radius: 50%;
+      background: rgba(54, 212, 131, 0.11);
+      color: #5ee49d;
+      font-size: 17px;
+      box-shadow: 0 0 24px rgba(54, 212, 131, 0.09);
+    }
+
+    .overall-status-left h2 {
+      margin: 0 0 5px;
+      color: #dffbed;
+      font-size: 18px;
+    }
+
+    .overall-status-left p {
+      margin: 0;
+      color: #83aa96;
+      font-size: 12px;
+    }
+
+    .overall-status-live {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 12px;
+      border: 1px solid rgba(54, 212, 131, 0.18);
+      border-radius: 999px;
+      background: rgba(54, 212, 131, 0.075);
+      color: #76e9aa;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+
+    .live-ring {
+      position: relative;
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--status-green);
+      box-shadow: 0 0 10px rgba(54, 212, 131, 0.8);
+    }
+
+    .live-ring::after {
+      content: "";
+      position: absolute;
+      inset: -4px;
+      border: 1px solid rgba(54, 212, 131, 0.4);
+      border-radius: 50%;
+      animation: statusLiveRing 1.8s ease-out infinite;
+    }
+
+    .status-content-card,
+    .incident-card,
+    .external-status-card {
+      overflow: hidden;
+      margin-bottom: 20px;
+      border: 1px solid var(--status-border);
+      border-radius: 18px;
+      background:
+        linear-gradient(
+          145deg,
+          rgba(15, 20, 28, 0.97),
+          rgba(8, 11, 16, 0.98)
+        );
+      box-shadow:
+        0 28px 75px rgba(0, 0, 0, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.025);
+    }
+
+    .status-section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 23px 25px;
+      border-bottom: 1px solid var(--status-border);
+      background: rgba(255, 255, 255, 0.014);
+    }
+
+    .section-eyebrow {
+      display: block;
+      margin-bottom: 5px;
+      color: #6098ce;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+
+    .status-section-header h2 {
+      margin: 0;
+      color: #ffffff;
+      font-size: 18px;
+    }
+
+    .status-updated {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--status-muted);
+      font-size: 11px;
+    }
+
+    .status-updated i {
+      color: #599cd9;
+    }
+
+    .service-row {
+      padding: 23px 25px;
+      border-bottom: 1px solid var(--status-border);
+      transition:
+        background 0.25s ease,
+        border-color 0.25s ease;
+    }
+
+    .service-row:last-child {
+      border-bottom: 0;
+    }
+
+    .service-row:hover {
+      background: rgba(255, 255, 255, 0.017);
+    }
+
+    .service-row-top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 22px;
+    }
+
+    .service-information {
+      display: flex;
+      align-items: center;
+      gap: 13px;
+    }
+
+    .service-icon {
+      display: grid;
+      flex: 0 0 auto;
+      width: 38px;
+      height: 38px;
+      place-items: center;
+      border: 1px solid rgba(47, 129, 212, 0.13);
+      border-radius: 10px;
+      background: rgba(47, 129, 212, 0.07);
+      color: #65adf1;
+      font-size: 13px;
+      transition:
+        transform 0.25s ease,
+        background 0.25s ease;
+    }
+
+    .service-row:hover .service-icon {
+      background: rgba(47, 129, 212, 0.11);
+      transform: translateY(-2px);
+    }
+
+    .service-information h3 {
+      margin: 0 0 4px;
+      color: #f2f5f9;
+      font-size: 14px;
+    }
+
+    .service-information p {
+      margin: 0;
+      color: var(--status-muted);
+      font-size: 11px;
+    }
+
+    .service-state {
+      display: inline-flex;
+      flex: 0 0 auto;
+      align-items: center;
+      gap: 8px;
+      color: #76e4a9;
+      font-size: 11px;
+      font-weight: 600;
+    }
+
+    .service-state-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--status-green);
+      box-shadow: 0 0 9px rgba(54, 212, 131, 0.55);
+    }
+
+    .uptime-area {
+      margin-top: 19px;
+      padding-left: 51px;
+    }
+
+    .uptime-information,
+    .uptime-range {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .uptime-information {
+      margin-bottom: 9px;
+    }
+
+    .uptime-information span,
+    .uptime-range span {
+      color: #6f7b8a;
+      font-size: 9px;
+    }
+
+    .uptime-information strong {
+      color: #a7b2bf;
+      font-size: 10px;
+      font-weight: 600;
+    }
+
+    .uptime-bars {
+      display: grid;
+      grid-template-columns: repeat(90, minmax(2px, 1fr));
+      gap: 2px;
+      height: 27px;
+    }
+
+    .uptime-bar {
+      position: relative;
+      height: 100%;
+      border-radius: 2px;
+      background: rgba(54, 212, 131, 0.8);
+      opacity: 0;
+      transform: scaleY(0.2);
+      transform-origin: bottom;
+      animation: uptimeBarReveal 0.38s ease forwards;
+      transition:
+        filter 0.18s ease,
+        transform 0.18s ease;
+    }
+
+    .uptime-bar:hover {
+      z-index: 2;
+      filter: brightness(1.35);
+      transform: scaleY(1.14);
+    }
+
+    .uptime-bar::after {
+      content: attr(data-tooltip);
+      position: absolute;
+      z-index: 10;
+      bottom: calc(100% + 9px);
+      left: 50%;
+      visibility: hidden;
+      width: max-content;
+      max-width: 180px;
+      padding: 7px 9px;
+      border: 1px solid var(--status-border);
+      border-radius: 7px;
+      background: #151b24;
+      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.35);
+      color: #dce3eb;
+      font-size: 9px;
+      opacity: 0;
+      pointer-events: none;
+      transform: translate(-50%, 4px);
+      transition:
+        opacity 0.18s ease,
+        transform 0.18s ease,
+        visibility 0.18s ease;
+    }
+
+    .uptime-bar:hover::after {
+      visibility: visible;
+      opacity: 1;
+      transform: translate(-50%, 0);
+    }
+
+    .uptime-range {
+      margin-top: 8px;
+    }
+
+    .incident-count {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: var(--status-muted);
+      font-size: 11px;
+    }
+
+    .incident-count span {
+      display: grid;
+      width: 22px;
+      height: 22px;
+      place-items: center;
+      border: 1px solid var(--status-border);
+      border-radius: 7px;
+      background: rgba(255, 255, 255, 0.025);
+      color: #cbd4de;
+      font-size: 10px;
+      font-weight: 700;
+    }
+
+    .no-incidents {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      padding: 28px 25px;
+    }
+
+    .no-incidents-icon {
+      display: grid;
+      flex: 0 0 auto;
+      width: 42px;
+      height: 42px;
+      place-items: center;
+      border: 1px solid rgba(54, 212, 131, 0.16);
+      border-radius: 12px;
+      background: rgba(54, 212, 131, 0.07);
+      color: #5bda96;
+      font-size: 15px;
+    }
+
+    .no-incidents h3 {
+      margin: 0 0 5px;
+      color: #e7ecf2;
+      font-size: 14px;
+    }
+
+    .no-incidents p {
+      margin: 0;
+      color: var(--status-muted);
+      font-size: 11px;
+      line-height: 1.5;
+    }
+
+    .status-legend {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
+      gap: 22px;
+      margin: 25px 0;
+    }
+
+    .legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      color: #778391;
+      font-size: 10px;
+    }
+
+    .legend-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+    }
+
+    .legend-dot.operational {
+      background: var(--status-green);
+    }
+
+    .legend-dot.maintenance {
+      background: var(--status-blue-light);
+    }
+
+    .legend-dot.degraded {
+      background: var(--status-yellow);
+    }
+
+    .legend-dot.outage {
+      background: var(--status-red);
+    }
+
+    .external-status-card {
+      position: relative;
+      padding: 27px;
+    }
+
+    .external-status-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 12%;
+      right: 12%;
+      height: 1px;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(105, 183, 255, 0.68),
+        transparent
+      );
+    }
+
+    .external-status-content {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      margin-bottom: 22px;
+    }
+
+    .external-status-icon {
+      display: grid;
+      flex: 0 0 auto;
+      width: 46px;
+      height: 46px;
+      place-items: center;
+      border: 1px solid rgba(47, 129, 212, 0.2);
+      border-radius: 13px;
+      background: rgba(47, 129, 212, 0.09);
+      color: #65b0f7;
+      font-size: 16px;
+    }
+
+    .external-status-content h2 {
+      margin: 0 0 5px;
+      color: #f3f6fa;
+      font-size: 16px;
+    }
+
+    .external-status-content p {
+      margin: 0;
+      color: var(--status-muted);
+      font-size: 11px;
+      line-height: 1.55;
+    }
+
+    .external-status-button {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      overflow: hidden;
+      width: 100%;
+      min-height: 57px;
+      padding: 0 20px;
+      border: 1px solid rgba(105, 183, 255, 0.27);
+      border-radius: 13px;
+      background:
+        linear-gradient(
+          115deg,
+          #246fbb,
+          #2f81d4 50%,
+          #246fbb
+        );
+      background-size: 200% 100%;
+      box-shadow:
+        0 15px 38px rgba(47, 129, 212, 0.2),
+        inset 0 1px 0 rgba(255, 255, 255, 0.13);
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 700;
+      text-decoration: none;
+      transition:
+        transform 0.22s ease,
+        box-shadow 0.22s ease,
+        border-color 0.22s ease,
+        background-position 0.35s ease;
+    }
+
+    .external-status-button::before {
+      content: "";
+      position: absolute;
+      top: -120%;
+      left: -20%;
+      width: 14%;
+      height: 340%;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.24),
+        transparent
+      );
+      transform: rotate(20deg);
+      animation: externalButtonShine 4.8s ease-in-out infinite;
+    }
+
+    .external-status-button:hover {
+      border-color: rgba(105, 183, 255, 0.48);
+      background-position: 100% 0;
+      box-shadow:
+        0 20px 45px rgba(47, 129, 212, 0.3),
+        inset 0 1px 0 rgba(255, 255, 255, 0.17);
+      transform: translateY(-2px);
+    }
+
+    .external-status-button:active {
+      transform: translateY(0);
+    }
+
+    .external-status-button:focus-visible {
+      outline: 3px solid rgba(105, 183, 255, 0.25);
+      outline-offset: 3px;
+    }
+
+    .button-content {
+      position: relative;
+      z-index: 2;
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .button-arrow {
+      position: relative;
+      z-index: 2;
+      opacity: 0.8;
+      transition: transform 0.22s ease;
+    }
+
+    .external-status-button:hover .button-arrow {
+      transform: translate(2px, -2px);
+    }
+
+    .external-status-security {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      margin-top: 12px;
+      color: #657181;
+      font-size: 9px;
+    }
+
+    .external-status-security i {
+      color: #4f91ce;
+    }
+
+    .site-footer {
+      border-top: 1px solid rgba(255, 255, 255, 0.07);
+      background: #05070a;
+    }
+
+    .footer-top {
+      padding: 60px 0 45px;
+    }
+
+    .footer-grid {
+      display: grid;
+      grid-template-columns: minmax(240px, 1.6fr) repeat(3, minmax(120px, 1fr));
+      gap: 42px;
+    }
+
+    .footer-brand p {
+      max-width: 340px;
+      margin: 18px 0 0;
+      color: #7e8998;
+      font-size: 13px;
+      line-height: 1.65;
+    }
+
+    .footer-col {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 11px;
+    }
+
+    .footer-col h3 {
+      margin: 0 0 4px;
+      color: #ffffff;
+      font-size: 13px;
+    }
+
+    .footer-col a {
+      color: #7e8998;
+      font-size: 12px;
+      text-decoration: none;
+      transition:
+        color 0.2s ease,
+        transform 0.2s ease;
+    }
+
+    .footer-col a:hover {
+      color: #ffffff;
+      transform: translateX(2px);
+    }
+
+    .footer-sep {
+      height: 1px;
+      background: rgba(255, 255, 255, 0.07);
+    }
+
+    .footer-bottom {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 22px 0;
+      color: #687382;
+      font-size: 11px;
+    }
+
+    .reveal-status {
+      opacity: 0;
+      transform: translateY(20px);
+      transition:
+        opacity 0.7s ease,
+        transform 0.7s ease;
+    }
+
+    .reveal-status.status-visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    @keyframes statusDotPulse {
+      0%,
+      100% {
+        opacity: 1;
+        transform: scale(1);
+      }
+
+      50% {
+        opacity: 0.55;
+        transform: scale(0.78);
+      }
+    }
+
+    @keyframes statusLiveRing {
+      0% {
+        opacity: 0.8;
+        transform: scale(0.65);
+      }
+
+      100% {
+        opacity: 0;
+        transform: scale(1.7);
+      }
+    }
+
+    @keyframes statusOrbFloat {
+      from {
+        opacity: 0.65;
+        transform: translate3d(-15px, -10px, 0) scale(0.94);
+      }
+
+      to {
+        opacity: 1;
+        transform: translate3d(18px, 18px, 0) scale(1.08);
+      }
+    }
+
+    @keyframes statusBannerShine {
+      0%,
+      72% {
+        left: -40%;
+      }
+
+      100% {
+        left: 125%;
+      }
+    }
+
+    @keyframes externalButtonShine {
+      0%,
+      68% {
+        left: -20%;
+      }
+
+      100% {
+        left: 120%;
+      }
+    }
+
+    @keyframes uptimeBarReveal {
+      to {
+        opacity: 1;
+        transform: scaleY(1);
+      }
+    }
+
+    @media (max-width: 880px) {
+      .footer-grid {
+        grid-template-columns: 1.4fr 1fr 1fr;
+      }
+
+      .footer-col:last-child {
+        grid-column: 2 / -1;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .container {
+        width: min(100% - 28px, var(--container-width));
+      }
+
+      .header-inner {
+        min-height: 66px;
+      }
+
+      .brand-name {
+        font-size: 17px;
+      }
+
+      .icon-btn {
+        min-height: 40px;
+        padding: 0 12px;
+      }
+
+      .status-page-main {
+        padding: 58px 14px 80px;
+      }
+
+      .status-heading {
+        align-items: flex-start;
+        gap: 15px;
+        margin-bottom: 27px;
+      }
+
+      .status-logo {
+        width: 57px;
+        height: 57px;
+        border-radius: 16px;
+      }
+
+      .status-logo img {
+        width: 33px;
+        height: 33px;
+      }
+
+      .status-heading h1 {
+        font-size: 29px;
+      }
+
+      .status-heading p {
+        font-size: 13px;
+      }
+
+      .overall-status-card {
+        align-items: flex-start;
+        padding: 20px;
+      }
+
+      .overall-status-left {
+        align-items: flex-start;
+      }
+
+      .overall-status-live {
+        padding: 7px 9px;
+        font-size: 9px;
+      }
+
+      .status-section-header {
+        align-items: flex-start;
+        padding: 19px;
+      }
+
+      .status-updated {
+        max-width: 130px;
+        justify-content: flex-end;
+        text-align: right;
+      }
+
+      .service-row {
+        padding: 20px 19px;
+      }
+
+      .service-row-top {
+        align-items: flex-start;
+      }
+
+      .service-information p {
+        max-width: 250px;
+      }
+
+      .uptime-area {
+        padding-left: 0;
+      }
+
+      .uptime-bars {
+        grid-template-columns: repeat(45, minmax(3px, 1fr));
+        height: 25px;
+      }
+
+      .uptime-bar:nth-child(-n + 45) {
+        display: none;
+      }
+
+      .no-incidents {
+        padding: 23px 19px;
+      }
+
+      .external-status-card {
+        padding: 21px;
+      }
+
+      .footer-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .footer-brand {
+        grid-column: 1 / -1;
+      }
+
+      .footer-col:last-child {
+        grid-column: auto;
+      }
+    }
+
+    @media (max-width: 470px) {
+      .header-actions .icon-btn span {
+        display: none;
+      }
+
+      .header-actions .icon-btn {
+        width: 42px;
+        padding: 0;
+      }
+
+      .status-heading {
+        display: block;
+      }
+
+      .status-logo {
+        margin-bottom: 15px;
+      }
+
+      .overall-status-card {
+        display: block;
+      }
+
+      .overall-status-live {
+        margin-top: 17px;
+      }
+
+      .service-row-top {
+        display: block;
+      }
+
+      .service-state {
+        margin-top: 13px;
+        margin-left: 51px;
+      }
+
+      .external-status-content {
+        align-items: flex-start;
+      }
+
+      .external-status-button {
+        min-height: 61px;
+        padding: 0 16px;
+        font-size: 11px;
+      }
+
+      .external-status-security {
+        text-align: center;
+      }
+
+      .footer-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .footer-brand,
+      .footer-col:last-child {
+        grid-column: auto;
+      }
+
+      .footer-bottom {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *,
+      *::before,
+      *::after {
+        scroll-behavior: auto !important;
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
 </head>
+
 <body>
   <header class="site-header">
     <div class="container header-inner">
-      <a class="brand" href="/home">
-    <img class="brand-mark" src="https://i.postimg.cc/HsT3RLVn/multistreams-icon.png" alt="Multistreams.tv Logo">
-    <span class="brand-name">
-    <span class="brand-white">Multistreams</span><span class="brand-tv">.tv</span>
-</span>
-</a>
+      <a class="brand" href="/home" aria-label="Multistreams.tv home">
+        <img
+          class="brand-mark"
+          src="https://i.postimg.cc/HsT3RLVn/multistreams-icon.png"
+          alt="Multistreams.tv Logo"
+        >
+
+        <span class="brand-name">
+          <span class="brand-white">Multistreams</span><span class="brand-tv">.tv</span>
+        </span>
+      </a>
 
       <div class="header-actions">
-  <a class="icon-btn start-btn" href="/multistreams">
-  <i class="fa-solid fa-video" aria-hidden="true"></i>
-  <span>Start Watching</span>
-</a>
-</div>
+        <a class="icon-btn start-btn" href="/multistreams">
+          <i class="fa-solid fa-video" aria-hidden="true"></i>
+          <span>Start Watching</span>
+        </a>
+      </div>
     </div>
   </header>
 
-  <main class="site-main">
-    <div class="container">
-      <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Multistreams.tv | Status</title>
-  <link rel="stylesheet" href="styles.css" />
-</head>
-<body>
-  <main class="site-main">
-    <div class="container">
-      <section class="hero">
-        <h1>Status Page - Coming Soon!</h1>
-      </section>
-      
+  <main class="status-page-main">
+    <div class="status-background" aria-hidden="true">
+      <div class="status-grid"></div>
+      <div class="status-orb status-orb-one"></div>
+      <div class="status-orb status-orb-two"></div>
     </div>
-  </main>
-</body>
-</html>
+
+    <div class="status-page-container">
+      <section class="status-heading reveal-status">
+        <div class="status-logo">
+          <img
+            src="https://i.postimg.cc/HsT3RLVn/multistreams-icon.png"
+            alt="Multistreams.tv"
+          >
+        </div>
+
+        <div class="status-heading-content">
+          <span class="status-label">
+            <span class="status-label-dot"></span>
+            Service monitoring
+          </span>
+
+          <h1>Multistreams.tv Status</h1>
+
+          <p>
+            Check the current condition of Multistreams.tv services,
+            platform integrations, and core website functionality.
+          </p>
+        </div>
+      </section>
+
+      <section
+        class="overall-status-card reveal-status"
+        data-delay="100"
+      >
+        <div class="overall-status-left">
+          <div class="overall-status-icon">
+            <i class="fa-solid fa-check" aria-hidden="true"></i>
+          </div>
+
+          <div>
+            <h2>All Systems Operational</h2>
+            <p>No known service interruptions are currently displayed.</p>
+          </div>
+        </div>
+
+        <div class="overall-status-live">
+          <span class="live-ring"></span>
+          Operational
+        </div>
+      </section>
+
+      <section
+        class="status-content-card reveal-status"
+        data-delay="180"
+      >
+        <div class="status-section-header">
+          <div>
+            <span class="section-eyebrow">System overview</span>
+            <h2>Services</h2>
+          </div>
+
+          <div class="status-updated">
+            <i class="fa-regular fa-clock" aria-hidden="true"></i>
+            <span id="statusUpdatedText">Status overview loaded</span>
+          </div>
+        </div>
+
+        <div class="service-list">
+          <article
+            class="service-row"
+            data-service="website"
+            data-status="operational"
+            data-uptime="99.99"
+          >
+            <div class="service-row-top">
+              <div class="service-information">
+                <div class="service-icon">
+                  <i class="fa-solid fa-globe" aria-hidden="true"></i>
+                </div>
+
+                <div>
+                  <h3>Main Website</h3>
+                  <p>Multistreams.tv website and public pages</p>
+                </div>
+              </div>
+
+              <div class="service-state">
+                <span class="service-state-dot"></span>
+                Operational
+              </div>
+            </div>
+
+            <div class="uptime-area">
+              <div class="uptime-information">
+                <span>90-day uptime</span>
+                <strong>99.99%</strong>
+              </div>
+
+              <div
+                class="uptime-bars"
+                aria-label="Main Website 90-day uptime"
+              ></div>
+
+              <div class="uptime-range">
+                <span>90 days ago</span>
+                <span>Today</span>
+              </div>
+            </div>
+          </article>
+
+          <article
+            class="service-row"
+            data-service="viewer"
+            data-status="operational"
+            data-uptime="100"
+          >
+            <div class="service-row-top">
+              <div class="service-information">
+                <div class="service-icon">
+                  <i class="fa-solid fa-table-cells-large" aria-hidden="true"></i>
+                </div>
+
+                <div>
+                  <h3>Multistream Viewer</h3>
+                  <p>Stream grid, layouts, chat, and viewer controls</p>
+                </div>
+              </div>
+
+              <div class="service-state">
+                <span class="service-state-dot"></span>
+                Operational
+              </div>
+            </div>
+
+            <div class="uptime-area">
+              <div class="uptime-information">
+                <span>90-day uptime</span>
+                <strong>100%</strong>
+              </div>
+
+              <div
+                class="uptime-bars"
+                aria-label="Multistream Viewer 90-day uptime"
+              ></div>
+
+              <div class="uptime-range">
+                <span>90 days ago</span>
+                <span>Today</span>
+              </div>
+            </div>
+          </article>
+
+          <article
+            class="service-row"
+            data-service="platforms"
+            data-status="operational"
+            data-uptime="99.98"
+          >
+            <div class="service-row-top">
+              <div class="service-information">
+                <div class="service-icon">
+                  <i class="fa-solid fa-plug" aria-hidden="true"></i>
+                </div>
+
+                <div>
+                  <h3>Platform Integrations</h3>
+                  <p>Twitch, YouTube, Kick, and Rumble connections</p>
+                </div>
+              </div>
+
+              <div class="service-state">
+                <span class="service-state-dot"></span>
+                Operational
+              </div>
+            </div>
+
+            <div class="uptime-area">
+              <div class="uptime-information">
+                <span>90-day uptime</span>
+                <strong>99.98%</strong>
+              </div>
+
+              <div
+                class="uptime-bars"
+                aria-label="Platform Integrations 90-day uptime"
+              ></div>
+
+              <div class="uptime-range">
+                <span>90 days ago</span>
+                <span>Today</span>
+              </div>
+            </div>
+          </article>
+
+          <article
+            class="service-row"
+            data-service="accounts"
+            data-status="operational"
+            data-uptime="100"
+          >
+            <div class="service-row-top">
+              <div class="service-information">
+                <div class="service-icon">
+                  <i class="fa-solid fa-user-shield" aria-hidden="true"></i>
+                </div>
+
+                <div>
+                  <h3>Accounts and Authentication</h3>
+                  <p>Sign-in, profiles, saved layouts, and account data</p>
+                </div>
+              </div>
+
+              <div class="service-state">
+                <span class="service-state-dot"></span>
+                Operational
+              </div>
+            </div>
+
+            <div class="uptime-area">
+              <div class="uptime-information">
+                <span>90-day uptime</span>
+                <strong>100%</strong>
+              </div>
+
+              <div
+                class="uptime-bars"
+                aria-label="Accounts and Authentication 90-day uptime"
+              ></div>
+
+              <div class="uptime-range">
+                <span>90 days ago</span>
+                <span>Today</span>
+              </div>
+            </div>
+          </article>
+
+          <article
+            class="service-row"
+            data-service="api"
+            data-status="operational"
+            data-uptime="99.99"
+          >
+            <div class="service-row-top">
+              <div class="service-information">
+                <div class="service-icon">
+                  <i class="fa-solid fa-server" aria-hidden="true"></i>
+                </div>
+
+                <div>
+                  <h3>Backend and API</h3>
+                  <p>Core infrastructure, storage, and API requests</p>
+                </div>
+              </div>
+
+              <div class="service-state">
+                <span class="service-state-dot"></span>
+                Operational
+              </div>
+            </div>
+
+            <div class="uptime-area">
+              <div class="uptime-information">
+                <span>90-day uptime</span>
+                <strong>99.99%</strong>
+              </div>
+
+              <div
+                class="uptime-bars"
+                aria-label="Backend and API 90-day uptime"
+              ></div>
+
+              <div class="uptime-range">
+                <span>90 days ago</span>
+                <span>Today</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
+      <section
+        class="incident-card reveal-status"
+        data-delay="260"
+      >
+        <div class="status-section-header">
+          <div>
+            <span class="section-eyebrow">Latest updates</span>
+            <h2>Recent Incidents</h2>
+          </div>
+
+          <div class="incident-count">
+            <span>0</span>
+            Active
+          </div>
+        </div>
+
+        <div class="no-incidents">
+          <div class="no-incidents-icon">
+            <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+          </div>
+
+          <div>
+            <h3>No active incidents</h3>
+            <p>
+              There are currently no active incidents displayed for
+              Multistreams.tv.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section
+        class="status-legend reveal-status"
+        data-delay="320"
+      >
+        <div class="legend-item">
+          <span class="legend-dot operational"></span>
+          Operational
+        </div>
+
+        <div class="legend-item">
+          <span class="legend-dot maintenance"></span>
+          Maintenance
+        </div>
+
+        <div class="legend-item">
+          <span class="legend-dot degraded"></span>
+          Degraded
+        </div>
+
+        <div class="legend-item">
+          <span class="legend-dot outage"></span>
+          Outage
+        </div>
+      </section>
+
+      <section
+        class="external-status-card reveal-status"
+        data-delay="380"
+      >
+        <div class="external-status-content">
+          <div class="external-status-icon">
+            <i class="fa-solid fa-chart-line" aria-hidden="true"></i>
+          </div>
+
+          <div>
+            <h2>View Detailed Live Monitoring</h2>
+            <p>
+              Open the official monitoring dashboard for detailed uptime
+              information and the latest service checks.
+            </p>
+          </div>
+        </div>
+
+        <a
+          class="external-status-button"
+          href="https://stats.uptimerobot.com/oCcUw2RwHG"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          <span class="button-content">
+            <i class="fa-solid fa-signal" aria-hidden="true"></i>
+            View Full Multistreams.tv Status Page
+          </span>
+
+          <i
+            class="fa-solid fa-arrow-up-right-from-square button-arrow"
+            aria-hidden="true"
+          ></i>
+        </a>
+
+        <div class="external-status-security">
+          <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>
+          Opens the official UptimeRobot monitoring dashboard
+        </div>
+      </section>
     </div>
   </main>
 
@@ -85,12 +1711,21 @@
       <div class="footer-grid">
         <div class="footer-brand">
           <a class="brand" href="/home">
-    <img class="brand-mark" src="https://i.postimg.cc/HsT3RLVn/multistreams-icon.png" alt="Multistreams.tv Logo">
-    <span class="brand-name">
-    <span class="brand-white">Multistreams</span><span class="brand-tv">.tv</span>
-</span>
-</a>
-          <p>Watch and compare multiple streams in one clean, easy-to-use interface.</p>
+            <img
+              class="brand-mark"
+              src="https://i.postimg.cc/HsT3RLVn/multistreams-icon.png"
+              alt="Multistreams.tv Logo"
+            >
+
+            <span class="brand-name">
+              <span class="brand-white">Multistreams</span><span class="brand-tv">.tv</span>
+            </span>
+          </a>
+
+          <p>
+            Watch and compare multiple streams in one clean,
+            easy-to-use interface.
+          </p>
         </div>
 
         <div class="footer-col">
@@ -107,7 +1742,6 @@
           <a href="/contact">Contact</a>
           <a href="/blog">Blog</a>
           <a href="/status">Status</a>
-          
         </div>
 
         <div class="footer-col">
@@ -127,30 +1761,120 @@
       <div>All platforms. One screen.</div>
     </div>
   </footer>
-</body>
-<script>
-  const revealEls = document.querySelectorAll(
-    'section, .hero, .section, .contact-card, .info-card, .step-card, .faq-card, .blog-card, .blog-reader, .contact-form-section, .home-cta, .platform-pill'
-  );
 
-  revealEls.forEach(el => el.classList.add('reveal'));
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      const statusSections = document.querySelectorAll(".reveal-status");
+      const uptimeContainers = document.querySelectorAll(".uptime-bars");
+      const updatedText = document.getElementById("statusUpdatedText");
 
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach(entry => {
-      if (entry.isIntersecting) {
-        entry.target.classList.add('reveal-visible');
-      } else {
-        entry.target.classList.remove('reveal-visible');
+      /*
+       * These values control the visual status shown on this custom page.
+       * Update them manually whenever a service condition changes.
+       *
+       * Supported states:
+       * operational, maintenance, degraded, outage
+       */
+      const serviceHistory = {
+        website: [],
+        viewer: [],
+        platforms: [],
+        accounts: [],
+        api: []
+      };
+
+      const stateColors = {
+        operational: "rgba(54, 212, 131, 0.82)",
+        maintenance: "rgba(105, 183, 255, 0.82)",
+        degraded: "rgba(244, 189, 80, 0.88)",
+        outage: "rgba(240, 93, 104, 0.88)"
+      };
+
+      const stateLabels = {
+        operational: "Operational",
+        maintenance: "Maintenance",
+        degraded: "Degraded performance",
+        outage: "Service outage"
+      };
+
+      function createUptimeBars(container, serviceName) {
+        const history = serviceHistory[serviceName] || [];
+        const today = new Date();
+
+        for (let index = 0; index < 90; index += 1) {
+          const bar = document.createElement("span");
+          const daysAgo = 89 - index;
+          const barDate = new Date(today);
+
+          barDate.setDate(today.getDate() - daysAgo);
+
+          const historyState =
+            history.find((item) => item.day === daysAgo)?.status ||
+            "operational";
+
+          bar.className = "uptime-bar";
+          bar.style.background = stateColors[historyState];
+          bar.style.animationDelay = `${index * 7}ms`;
+
+          bar.dataset.tooltip =
+            `${barDate.toLocaleDateString(undefined, {
+              month: "short",
+              day: "numeric",
+              year: "numeric"
+            })} — ${stateLabels[historyState]}`;
+
+          container.appendChild(bar);
+        }
       }
+
+      uptimeContainers.forEach((container) => {
+        const serviceRow = container.closest(".service-row");
+        const serviceName = serviceRow?.dataset.service;
+
+        if (serviceName) {
+          createUptimeBars(container, serviceName);
+        }
+      });
+
+      const revealObserver = new IntersectionObserver(
+        (entries, observer) => {
+          entries.forEach((entry) => {
+            if (!entry.isIntersecting) {
+              return;
+            }
+
+            const delay = Number(entry.target.dataset.delay || 0);
+
+            window.setTimeout(() => {
+              entry.target.classList.add("status-visible");
+            }, delay);
+
+            observer.unobserve(entry.target);
+          });
+        },
+        {
+          threshold: 0.12
+        }
+      );
+
+      statusSections.forEach((section) => {
+        revealObserver.observe(section);
+      });
+
+      if (updatedText) {
+        const loadedTime = new Date();
+
+        updatedText.textContent =
+          `Overview loaded ${loadedTime.toLocaleTimeString([], {
+            hour: "numeric",
+            minute: "2-digit"
+          })}`;
+      }
+
+      window.addEventListener("load", () => {
+        document.body.classList.add("page-loaded");
+      });
     });
-  }, {
-    threshold: 0.15
-  });
-
-  revealEls.forEach(el => observer.observe(el));
-
-  window.addEventListener('load', () => {
-    document.body.classList.add('page-loaded');
-  });
-</script>
+  </script>
+</body>
 </html>
