@@ -58,6 +58,32 @@ export async function cacheGet(env, key) {
   try { return JSON.parse(row.payload_json); } catch { return null; }
 }
 
+export async function cacheGetStale(env, key, maxAgeSeconds = 86400) {
+  const cutoff = new Date(Date.now() - Math.max(60, Number(maxAgeSeconds) || 86400) * 1000).toISOString();
+  const row = await env.DB.prepare('SELECT payload_json FROM api_cache WHERE key = ?1 AND updated_at > ?2')
+    .bind(key, cutoff).first();
+  if (!row) return null;
+  try { return JSON.parse(row.payload_json); } catch { return null; }
+}
+
+export async function cacheFindLatest(env, prefix, includes = [], excludes = [], maxAgeSeconds = 86400) {
+  const cutoff = new Date(Date.now() - Math.max(60, Number(maxAgeSeconds) || 86400) * 1000).toISOString();
+  const clauses = ['key LIKE ?1', 'updated_at > ?2'];
+  const values = [`${String(prefix || '').replaceAll('\\', '\\\\').replaceAll('%', '\\%').replaceAll('_', '\\_')}%`, cutoff];
+  for (const fragment of includes) {
+    values.push(`%${String(fragment)}%`);
+    clauses.push(`key LIKE ?${values.length}`);
+  }
+  for (const fragment of excludes) {
+    values.push(`%${String(fragment)}%`);
+    clauses.push(`key NOT LIKE ?${values.length}`);
+  }
+  const row = await env.DB.prepare(`SELECT payload_json FROM api_cache WHERE ${clauses.join(' AND ')} ORDER BY updated_at DESC LIMIT 1`)
+    .bind(...values).first();
+  if (!row) return null;
+  try { return JSON.parse(row.payload_json); } catch { return null; }
+}
+
 export async function cachePut(env, key, value, ttlSeconds) {
   const now = Math.floor(Date.now() / 1000);
   await env.DB.prepare(`INSERT INTO api_cache (key, payload_json, expires_at, updated_at) VALUES (?1, ?2, ?3, ?4)
@@ -66,7 +92,10 @@ export async function cachePut(env, key, value, ttlSeconds) {
   return value;
 }
 
+export async function cacheDelete(env, key) {
+  await env.DB.prepare('DELETE FROM api_cache WHERE key = ?1').bind(key).run();
+}
+
 export function parseJson(value, fallback) {
   try { return JSON.parse(value); } catch { return fallback; }
 }
-

@@ -9,6 +9,7 @@ const contactClient = await readFile(new URL('../multistreams.tv/contact.js', im
 const oauthRoute = await readFile(new URL('../src/routes/oauth.js', import.meta.url), 'utf8');
 const aiRoute = await readFile(new URL('../src/routes/ai.js', import.meta.url), 'utf8');
 const platforms = await readFile(new URL('../src/platforms.js', import.meta.url), 'utf8');
+const thirdPartyRoute = await readFile(new URL('../src/routes/third-party.js', import.meta.url), 'utf8');
 const worker = await readFile(new URL('../src/index.js', import.meta.url), 'utf8');
 const wrangler = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 
@@ -56,7 +57,7 @@ test('production UI fixes remain wired to backend-normalized data', () => {
   assert.match(backendClient, /\/api\/security\/devices\/\$\{encodeURIComponent\(deviceId\)\}/);
 });
 
-test('OAuth, AI recovery, quota-safe YouTube data, and share routes have regressions covered', () => {
+test('OAuth, AI recovery, official YouTube data, and share routes have regressions covered', () => {
   assert.match(wrangler, /"TWITCH_REDIRECT_URI":\s*"https:\/\/multistreams\.tv\/multistreams"/);
   assert.match(backendClient, /\/api\/oauth\/twitch\/callback\?\$\{oauthRelayParams\.toString\(\)\}/);
   assert.match(aiRoute, /MALFORMED_FUNCTION_CALL/);
@@ -64,8 +65,13 @@ test('OAuth, AI recovery, quota-safe YouTube data, and share routes have regress
   assert.match(platforms, /\/activities\?part=snippet,contentDetails&home=true&maxResults=50/);
   assert.doesNotMatch(platforms, /slice\.map\(channelId => youtubeSearchVideos/);
   assert.match(platforms, /forHandle=/);
-  assert.match(platforms, /youtubeCreatorSearchFallback/);
-  assert.match(platforms, /\/v1\/youtube\/channel\/lives\?channelId=/);
+  assert.doesNotMatch(platforms, /\/v1\/youtube\//);
+  assert.match(platforms, /\/search\?part=snippet&type=channel/);
+  assert.match(thirdPartyRoute, /\/v1\/youtube\/shorts\/trending/);
+  assert.match(thirdPartyRoute, /\/v1\/rumble\//);
+  assert.match(oauthRoute, /Array\.isArray\(tokens\.scope\)/);
+  assert.match(worker, /new URL\('\/api\/oauth\/twitch\/callback'/);
+  assert.match(platforms, /appToken\(env, 'twitch', true\)/);
   assert.match(worker, /async function layoutShell/);
   assert.match(wrangler, /"run_worker_first":\s*\[[^\]]*"\/layout"/);
   assert.match(html, /function createLayoutShareLink/);

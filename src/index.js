@@ -12,6 +12,7 @@ import { handleThirdPartyRoute } from './routes/third-party.js';
 
 const routeHandlers = [handleAuthRoute, handleOAuthRoute, handlePlatformRoute, handleDataRoute, handleProfileRoute, handleRewardRoute, handleAiRoute, handleMediaRoute, handleThirdPartyRoute];
 const CLEAN_PAGE_NAMES = new Set(['home', 'multistreams', 'about', 'contact', 'blog', 'status', 'twitch', 'kick', 'youtube', 'rumble', 'guidelines', 'terms', 'privacy', 'dmca']);
+const GOOGLE_SITE_VERIFICATION_FILE = 'googledfe111b1f289a1f0.html';
 
 function securityHeaders(response) {
   const headers = new Headers(response.headers);
@@ -118,6 +119,20 @@ async function layoutShell(request, env, url) {
 export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
+    if (url.pathname === '/multistreams'
+      && ['GET', 'HEAD'].includes(request.method)
+      && url.searchParams.get('state')
+      && (url.searchParams.get('code') || url.searchParams.get('error'))
+      && !url.searchParams.get('oauth')) {
+      const relay = new URL('/api/oauth/twitch/callback', url.origin);
+      relay.search = url.search;
+      return Response.redirect(relay.toString(), 302);
+    }
+    if (url.pathname === `/${GOOGLE_SITE_VERIFICATION_FILE}` && ['GET', 'HEAD'].includes(request.method)) {
+      return new Response(request.method === 'HEAD' ? null : `google-site-verification: ${GOOGLE_SITE_VERIFICATION_FILE}\n`, {
+        headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' }
+      });
+    }
     const legacyPage = url.pathname.match(/^\/([a-z0-9-]+)\.html$/i)?.[1]?.toLowerCase();
     if (legacyPage && ['GET', 'HEAD'].includes(request.method) && (legacyPage === 'index' || CLEAN_PAGE_NAMES.has(legacyPage))) {
       url.pathname = legacyPage === 'index' ? '/' : `/${legacyPage}`;

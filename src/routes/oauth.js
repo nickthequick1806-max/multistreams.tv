@@ -172,6 +172,9 @@ async function finishGoogleLogin(request, env, identity) {
 async function saveConnection(env, userId, platform, identity, tokens, scopes) {
   const timestamp = nowIso();
   const expiresAt = tokens.expires_in ? new Date(Date.now() + Number(tokens.expires_in) * 1000).toISOString() : null;
+  const grantedScopes = Array.isArray(tokens.scope)
+    ? tokens.scope.join(' ')
+    : String(tokens.scope || scopes.join(' '));
   await env.DB.prepare(`INSERT INTO oauth_connections
     (id, user_id, platform, platform_user_id, platform_username, access_token, refresh_token, token_type, scopes, expires_at, metadata_json, created_at, updated_at)
     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
@@ -181,7 +184,7 @@ async function saveConnection(env, userId, platform, identity, tokens, scopes) {
       token_type = excluded.token_type, scopes = excluded.scopes,
       expires_at = excluded.expires_at, metadata_json = excluded.metadata_json, updated_at = excluded.updated_at`)
     .bind(randomId(), userId, platform, identity.id, identity.username, await encrypt(tokens.access_token, env.TOKEN_ENCRYPTION_KEY),
-      tokens.refresh_token ? await encrypt(tokens.refresh_token, env.TOKEN_ENCRYPTION_KEY) : '', tokens.token_type || 'Bearer', tokens.scope || scopes.join(' '),
+      tokens.refresh_token ? await encrypt(tokens.refresh_token, env.TOKEN_ENCRYPTION_KEY) : '', tokens.token_type || 'Bearer', grantedScopes,
       expiresAt, JSON.stringify({ avatarUrl: identity.avatarUrl || '', bannerUrl: identity.bannerUrl || '' }), timestamp).run();
 }
 

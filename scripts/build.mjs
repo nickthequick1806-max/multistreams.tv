@@ -12,7 +12,7 @@ await cp(resolve(root, 'logos and assets'), resolve(dist, 'logos and assets'), {
 await cp(resolve(root, 'COLLECTIBLE CARD IMAGES'), resolve(dist, 'COLLECTIBLE CARD IMAGES'), { recursive: true });
 
 const routablePages = (await readdir(source))
-  .filter(file => file.endsWith('.html'))
+  .filter(file => file.endsWith('.html') && !/^google[a-z0-9_-]+\.html$/i.test(file))
   .map(file => file.slice(0, -'.html'.length));
 const routePattern = new RegExp(`\\b(${routablePages.join('|')})\\.html\\b`, 'g');
 

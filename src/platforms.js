@@ -1,5 +1,5 @@
 import { HttpError, clampInt } from './lib/http.js';
-import { cacheGet, cachePut, nowIso, optionalSession, parseJson, requireSession } from './lib/db.js';
+import { cacheDelete, cacheFindLatest, cacheGet, cacheGetStale, cachePut, nowIso, optionalSession, parseJson, requireSession } from './lib/db.js';
 import { decrypt, encrypt } from './lib/crypto.js';
 
 const PLATFORM_CAPABILITIES = Object.freeze({
@@ -26,12 +26,15 @@ function twitchThumbnail(value, width = 640, height = 360) {
   return String(value || '').replace('{width}', String(width)).replace('{height}', String(height));
 }
 
-async function appToken(env, platform) {
-  if (platform === 'twitch' && env.TWITCH_APP_ACCESS_TOKEN) return env.TWITCH_APP_ACCESS_TOKEN;
+async function appToken(env, platform, forceRefresh = false) {
   const key = `${platform}:app-token`;
-  const cached = await cacheGet(env, key);
-  if (cached?.ciphertext) {
-    try { return await decrypt(cached.ciphertext, env.TOKEN_ENCRYPTION_KEY); } catch {}
+  if (!forceRefresh) {
+    const cached = await cacheGet(env, key);
+    if (cached?.ciphertext) {
+      try { return await decrypt(cached.ciphertext, env.TOKEN_ENCRYPTION_KEY); } catch {}
+    }
+  } else {
+    await cacheDelete(env, key);
   }
   const isTwitch = platform === 'twitch';
   const endpoint = isTwitch ? 'https://id.twitch.tv/oauth2/token' : 'https://id.kick.com/oauth/token';
@@ -47,10 +50,24 @@ async function appToken(env, platform) {
 }
 
 async function twitchApi(env, path, accessToken) {
-  const token = accessToken || await appToken(env, 'twitch');
-  const response = await fetch(`https://api.twitch.tv/helix${path}`, { headers: { authorization: `Bearer ${token}`, 'client-id': env.TWITCH_CLIENT_ID } });
-  if (!response.ok) throw new HttpError(response.status === 429 ? 429 : 502, `Twitch API request failed (${response.status}).`, 'twitch_api_error');
-  return response.json();
+  const request = async token => {
+    const response = await fetch(`https://api.twitch.tv/helix${path}`, { headers: { authorization: `Bearer ${token}`, 'client-id': env.TWITCH_CLIENT_ID } });
+    const payload = await response.json().catch(() => ({}));
+    return { response, payload };
+  };
+  let token = accessToken || await appToken(env, 'twitch');
+  let result = await request(token);
+  if (result.response.status === 401 && !accessToken) {
+    token = await appToken(env, 'twitch', true);
+    result = await request(token);
+  }
+  if (!result.response.ok) {
+    const status = result.response.status;
+    throw new HttpError(status === 401 ? 401 : status === 429 ? 429 : 502, `Twitch API request failed (${status}).`, 'twitch_api_error', {
+      providerMessage: String(result.payload?.message || '').slice(0, 200)
+    });
+  }
+  return result.payload;
 }
 
 async function kickApi(env, path, accessToken) {
@@ -62,9 +79,11 @@ async function kickApi(env, path, accessToken) {
 
 async function youtubeApi(env, path, accessToken) {
   const publicCacheKey = accessToken ? '' : `youtube:response:v4:${path}`;
+  let stale = null;
   if (publicCacheKey) {
     const cached = await cacheGet(env, publicCacheKey);
     if (cached) return cached;
+    stale = await cacheGetStale(env, publicCacheKey, 86400);
   }
   const keys = accessToken ? [''] : [...new Set([env.YOUTUBE_API_KEY, env.YOUTUBE_API_KEY_FALLBACK].filter(Boolean))];
   if (!accessToken && !keys.length) throw new HttpError(503, 'YouTube Data API is not configured.', 'platform_not_configured');
@@ -80,7 +99,7 @@ async function youtubeApi(env, path, accessToken) {
       if (publicCacheKey) {
         const isSearch = path.startsWith('/search?');
         const isLiveSearch = isSearch && /(?:^|[?&])eventType=live(?:&|$)/.test(path);
-        const ttl = isLiveSearch ? 300 : isSearch ? 1800 : path.startsWith('/videoCategories?') ? 86400 : 900;
+        const ttl = isLiveSearch ? 1800 : isSearch ? 1800 : path.startsWith('/videoCategories?') ? 86400 : 900;
         await cachePut(env, publicCacheKey, payload, ttl);
       }
       return payload;
@@ -91,6 +110,7 @@ async function youtubeApi(env, path, accessToken) {
   const reason = lastFailure?.payload?.error?.errors?.[0]?.reason || '';
   const status = lastFailure?.response?.status || 502;
   const quotaLimited = status === 429 || status === 403 && /quota|rateLimit/i.test(reason);
+  if (quotaLimited && stale) return stale;
   throw new HttpError(quotaLimited ? 429 : 502, quotaLimited ? 'YouTube data is temporarily using its cached results. Please try again shortly.' : `YouTube API request failed (${reason || status}).`, quotaLimited ? 'youtube_rate_limited' : 'youtube_api_error');
 }
 
@@ -102,9 +122,9 @@ async function connectionToken(env, row) {
   return decrypt(row.access_token, env.TOKEN_ENCRYPTION_KEY);
 }
 
-async function refreshConnection(env, row) {
+async function refreshConnection(env, row, { force = false } = {}) {
   if (!row.refresh_token) return row;
-  if (!row.expires_at || new Date(row.expires_at).getTime() > Date.now() + 120_000) return row;
+  if (!force && (!row.expires_at || new Date(row.expires_at).getTime() > Date.now() + 120_000)) return row;
   const refreshToken = await decrypt(row.refresh_token, env.TOKEN_ENCRYPTION_KEY);
   let endpoint;
   let clientId;
@@ -116,11 +136,16 @@ async function refreshConnection(env, row) {
   const body = new URLSearchParams({ grant_type: 'refresh_token', refresh_token: refreshToken, client_id: clientId, client_secret: clientSecret });
   const response = await fetch(endpoint, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
   const payload = await response.json().catch(() => ({}));
-  if (!response.ok || !payload.access_token) return row;
+  if (!response.ok || !payload.access_token) {
+    if (force) throw new HttpError(401, `${row.platform} authorization expired. Reconnect the account to continue.`, 'platform_reauthorization_required');
+    return row;
+  }
   const expiresAt = payload.expires_in ? new Date(Date.now() + Number(payload.expires_in) * 1000).toISOString() : row.expires_at;
+  const encryptedAccessToken = await encrypt(payload.access_token, env.TOKEN_ENCRYPTION_KEY);
+  const encryptedRefreshToken = payload.refresh_token ? await encrypt(payload.refresh_token, env.TOKEN_ENCRYPTION_KEY) : row.refresh_token;
   await env.DB.prepare('UPDATE oauth_connections SET access_token = ?1, refresh_token = ?2, expires_at = ?3, updated_at = ?4 WHERE id = ?5')
-    .bind(await encrypt(payload.access_token, env.TOKEN_ENCRYPTION_KEY), payload.refresh_token ? await encrypt(payload.refresh_token, env.TOKEN_ENCRYPTION_KEY) : row.refresh_token, expiresAt, nowIso(), row.id).run();
-  return { ...row, access_token: await encrypt(payload.access_token, env.TOKEN_ENCRYPTION_KEY), expires_at: expiresAt };
+    .bind(encryptedAccessToken, encryptedRefreshToken, expiresAt, nowIso(), row.id).run();
+  return { ...row, access_token: encryptedAccessToken, refresh_token: encryptedRefreshToken, expires_at: expiresAt };
 }
 
 async function twitchUsers(env, ids = [], logins = []) {
@@ -225,6 +250,24 @@ async function youtubeChannels(env, ids, accessToken) {
   return (await youtubeApi(env, `/channels?part=snippet,statistics,brandingSettings,contentDetails&id=${encodeURIComponent([...new Set(ids)].slice(0, 50).join(','))}`, accessToken)).items || [];
 }
 
+async function youtubeChannelByHandle(env, handle, accessToken) {
+  const normalized = String(handle || '').trim().replace(/^@/, '');
+  if (!normalized) return null;
+  const payload = await youtubeApi(env, `/channels?part=snippet,statistics,brandingSettings,contentDetails&forHandle=${encodeURIComponent(normalized)}`, accessToken);
+  return payload.items?.[0] || null;
+}
+
+async function youtubeChannelUploads(env, channelId, limit = 24, accessToken) {
+  const channels = await youtubeChannels(env, [channelId], accessToken);
+  const channel = channels[0];
+  const uploadsId = channel?.contentDetails?.relatedPlaylists?.uploads;
+  if (!uploadsId) return [];
+  const playlist = await youtubeApi(env, `/playlistItems?part=contentDetails&playlistId=${encodeURIComponent(uploadsId)}&maxResults=${Math.min(50, limit)}`, accessToken);
+  const ids = (playlist.items || []).map(item => item.contentDetails?.videoId).filter(Boolean);
+  const videos = await youtubeVideoDetails(env, ids, accessToken);
+  return videos.map(video => normalizeYoutubeVideo(video, channel));
+}
+
 function normalizeYoutubeVideo(video, channel, categoryNames = new Map()) {
   const liveDetails = video.liveStreamingDetails || {};
   const isLive = Boolean(liveDetails.actualStartTime && !liveDetails.actualEndTime);
@@ -253,81 +296,39 @@ function normalizeYoutubeVideo(video, channel, categoryNames = new Map()) {
   };
 }
 
-function normalizeCreatorYoutubeVideo(item, forceLive = false) {
-  const channel = item.channel || {};
-  const badges = Array.isArray(item.badges) ? item.badges.map(badge => String(badge?.text || badge)).join(' ') : '';
-  const live = forceLive || item.type === 'live' || /\blive\b/i.test(badges);
-  const viewers = availableNumber(item.concurrentViewers, item.concurrentViewersInt, item.viewCountInt, item.viewCount);
-  return {
-    id: item.id || item.videoId || '',
-    channelId: channel.id || item.channelId || '',
-    platform: 'youtube',
-    name: channel.title || item.channelTitle || item.author || 'YouTube',
-    username: String(channel.handle || channel.title || item.channelTitle || '').replace(/^@/, ''),
-    title: item.title || 'YouTube livestream',
-    category: 'YouTube Live',
-    categoryId: '',
-    viewers: live ? viewers : null,
-    viewerCountAvailable: live && viewers !== null,
-    views: Number(item.viewCountInt || item.viewCount || 0),
-    startedAt: item.publishedTime || item.publishedAt || '',
-    durationSeconds: Number(item.lengthSeconds || 0),
-    tags: [],
-    thumbnail: item.thumbnail || item.thumbnailUrl || '',
-    avatar: channel.thumbnail || channel.avatar || '',
-    banner: '',
-    url: item.url || `https://www.youtube.com/watch?v=${encodeURIComponent(item.id || item.videoId || '')}`,
-    embedUrl: `https://www.youtube.com/embed/${encodeURIComponent(item.id || item.videoId || '')}?autoplay=1`,
-    live,
-    createdAt: item.publishedTime || item.publishedAt || ''
-  };
-}
-
-async function youtubeCreatorSearchFallback(env, { limit, query, live, channelId }) {
-  const payload = channelId
-    ? await creatorSearch(env, `/v1/youtube/channel/lives?channelId=${encodeURIComponent(channelId)}`)
-    : await creatorSearch(env, `/v1/youtube/search?query=${encodeURIComponent(query || 'live now')}&sortBy=popular`);
-  const candidates = channelId
-    ? [...(payload.lives || []), ...(payload.videos || []), ...(payload.contents || [])]
-    : [...(payload.lives || []), ...(live ? [] : payload.videos || [])];
-  const normalized = candidates
-    .map(item => normalizeCreatorYoutubeVideo(item, live))
-    .filter(item => item.id)
-    .slice(0, Math.min(50, Math.max(limit, 16)));
-  if (live && normalized.length) {
-    try {
-      const videos = await youtubeVideoDetails(env, normalized.map(item => item.id));
-      const channels = await youtubeChannels(env, videos.map(video => video.snippet?.channelId).filter(Boolean));
-      const byId = new Map(channels.map(channel => [channel.id, channel]));
-      const verified = videos
-        .map(video => normalizeYoutubeVideo(video, byId.get(video.snippet?.channelId)))
-        .filter(video => video.live)
-        .sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0))
-        .slice(0, limit);
-      if (verified.length) return verified;
-    } catch {}
-  }
-  if (live) throw new HttpError(429, 'YouTube live results are temporarily unavailable. Please try again shortly.', 'youtube_rate_limited');
-  const usable = normalized.slice(0, limit);
-  if (!usable.length) throw new HttpError(429, 'YouTube live results are temporarily unavailable. Please try again shortly.', 'youtube_rate_limited');
-  return usable;
-}
-
 async function youtubeSearchVideos(env, { limit = 24, query = '', live = false, categoryId = '', channelId = '', accessToken } = {}) {
-  const params = new URLSearchParams({ part: 'snippet', type: 'video', maxResults: String(Math.min(50, limit)), order: live ? 'viewCount' : 'viewCount', videoEmbeddable: 'true', safeSearch: 'moderate' });
-  if (query) params.set('q', query);
+  const sharedPublicLiveIndex = live && !accessToken;
+  const params = new URLSearchParams({ part: 'snippet', type: 'video', maxResults: String(sharedPublicLiveIndex ? 50 : Math.min(50, limit)), order: 'viewCount', videoEmbeddable: 'true', safeSearch: 'moderate' });
+  if (query && !sharedPublicLiveIndex) params.set('q', query);
   if (live) params.set('eventType', 'live');
   else params.set('publishedAfter', new Date(Date.now() - 30 * 86400_000).toISOString());
-  if (categoryId) params.set('videoCategoryId', categoryId);
-  if (channelId) params.set('channelId', channelId);
+  if (categoryId && !sharedPublicLiveIndex) params.set('videoCategoryId', categoryId);
+  if (channelId && !sharedPublicLiveIndex) params.set('channelId', channelId);
   let search;
   try {
     search = await youtubeApi(env, `/search?${params}`, accessToken);
   } catch (error) {
-    if (error.status === 429 && env.SCRAPECREATORS_API_KEY) {
-      return youtubeCreatorSearchFallback(env, { limit, query, live, channelId });
+    if (accessToken || error?.code !== 'youtube_rate_limited') throw error;
+    if (channelId && !live) return (await youtubeChannelUploads(env, channelId, limit)).slice(0, limit);
+    if (!live) {
+      const popular = await youtubeMostPopular(env, Math.max(limit, 24));
+      const words = String(query || '').toLowerCase().split(/\s+/).filter(word => word.length > 1);
+      const matches = popular.filter(video => {
+        if (categoryId && video.categoryId !== categoryId) return false;
+        if (!words.length) return true;
+        const haystack = `${video.name} ${video.title}`.toLowerCase();
+        return words.every(word => haystack.includes(word));
+      });
+      return (matches.length ? matches : popular).slice(0, limit);
     }
-    throw error;
+    search = await cacheFindLatest(
+      env,
+      'youtube:response:v4:/search?',
+      ['type=video', 'eventType=live'],
+      ['&q=', 'channelId=', 'videoCategoryId='],
+      86400
+    );
+    if (!search) throw error;
   }
   const ids = (search.items || []).map(item => item.id?.videoId).filter(Boolean);
   const videos = await youtubeVideoDetails(env, ids, accessToken);
@@ -338,7 +339,17 @@ async function youtubeSearchVideos(env, { limit = 24, query = '', live = false, 
     const categoryPayload = await youtubeApi(env, '/videoCategories?part=snippet&regionCode=US', accessToken);
     categoryNames = new Map((categoryPayload.items || []).map(item => [item.id, item.snippet?.title || 'YouTube']));
   } catch {}
-  return videos.map(video => normalizeYoutubeVideo(video, byId.get(video.snippet?.channelId), categoryNames));
+  const normalized = videos.map(video => normalizeYoutubeVideo(video, byId.get(video.snippet?.channelId), categoryNames));
+  const words = String(query || '').toLowerCase().split(/\s+/).filter(word => word.length > 1);
+  const matches = normalized.filter(video => {
+    if (live && !video.live) return false;
+    if (categoryId && video.categoryId !== categoryId) return false;
+    if (channelId && video.channelId !== channelId) return false;
+    if (!words.length) return true;
+    const haystack = `${video.name} ${video.title}`.toLowerCase();
+    return words.every(word => haystack.includes(word));
+  });
+  return (words.length || channelId || categoryId ? matches : normalized).slice(0, limit);
 }
 
 async function youtubeMostPopular(env, limit = 24) {
@@ -478,8 +489,16 @@ async function channelDetail(env, platform, identifier, options = {}) {
 
 async function twitchFollowing(env, row) {
   row = await refreshConnection(env, row);
-  const token = await connectionToken(env, row);
-  const payload = await twitchApi(env, `/streams/followed?user_id=${encodeURIComponent(row.platform_user_id)}&first=100`, token);
+  let token = await connectionToken(env, row);
+  let payload;
+  try {
+    payload = await twitchApi(env, `/streams/followed?user_id=${encodeURIComponent(row.platform_user_id)}&first=100`, token);
+  } catch (error) {
+    if (error.status !== 401) throw error;
+    row = await refreshConnection(env, row, { force: true });
+    token = await connectionToken(env, row);
+    payload = await twitchApi(env, `/streams/followed?user_id=${encodeURIComponent(row.platform_user_id)}&first=100`, token);
+  }
   const users = await twitchUsers(env, (payload.data || []).map(item => item.user_id));
   const byId = new Map(users.map(user => [user.id, user]));
   return (payload.data || []).map(stream => normalizeTwitchStream(stream, byId.get(stream.user_id))).sort((a, b) => b.viewers - a.viewers);
@@ -571,7 +590,7 @@ export async function browse(env, platform, view, options = {}) {
   const categoryId = String(options.categoryId || '').trim();
   const channelId = String(options.channelId || '').trim();
   const chart = String(options.chart || '').trim();
-  const cacheKey = `browse:v3:${platform}:${view}:${limit}:${categoryId}:${channelId}:${chart}:${query.toLowerCase()}`;
+  const cacheKey = `browse:v5:${platform}:${view}:${limit}:${categoryId}:${channelId}:${chart}:${query.toLowerCase()}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   let items;
@@ -593,7 +612,7 @@ export async function browse(env, platform, view, options = {}) {
 }
 
 export async function featured(env, limit = 20) {
-  const cacheKey = `featured:v4:${limit}`;
+  const cacheKey = `featured:v5:${limit}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   const config = parseJson(env.FEATURED_CHANNELS_JSON, {});
@@ -647,29 +666,39 @@ async function searchTwitchChannels(env, query, limit) {
   });
 }
 
-function normalizeCreatorYoutubeChannel(item) {
-  const id = item.id || item.channelId || '';
-  const username = String(item.handle || item.channelName || item.title || id).replace(/^@/, '');
-  return {
-    platform: 'youtube', id, name: item.channelName || item.title || username, username,
-    avatar: item.thumbnail || item.avatar || '', banner: '', live: false, category: '', viewers: null, viewerCountAvailable: false,
-    url: id ? `https://www.youtube.com/channel/${encodeURIComponent(id)}` : `https://www.youtube.com/@${encodeURIComponent(username)}`
-  };
-}
-
 async function searchYoutubeChannels(env, query, limit) {
+  let exact = null;
+  try { exact = await youtubeChannelByHandle(env, query); } catch {}
+  let searchItems = [];
   try {
-    const fallback = await creatorSearch(env, `/v1/youtube/search?query=${encodeURIComponent(query)}&type=channels`);
-    return (fallback.channels || []).slice(0, limit).map(normalizeCreatorYoutubeChannel);
+    const search = await youtubeApi(env, `/search?part=snippet&type=channel&maxResults=${limit}&q=${encodeURIComponent(query)}`);
+    searchItems = search.items || [];
   } catch (error) {
-    const handlePayload = await youtubeApi(env, `/channels?part=snippet,statistics,brandingSettings&forHandle=${encodeURIComponent(query)}`);
-    return (handlePayload.items || []).slice(0, limit).map(channel => ({
-      platform: 'youtube', id: channel.id, name: channel.snippet?.title || query, username: channel.snippet?.customUrl || query,
-      avatar: channel.snippet?.thumbnails?.high?.url || '', banner: channel.brandingSettings?.image?.bannerExternalUrl || '',
-      live: false, category: '', viewers: null, viewerCountAvailable: false,
-      url: `https://www.youtube.com/channel/${encodeURIComponent(channel.id)}`
-    }));
+    if (!exact || error?.code !== 'youtube_rate_limited') throw error;
   }
+  if (exact && !searchItems.some(item => item.id?.channelId === exact.id)) {
+    searchItems.unshift({
+      id: { channelId: exact.id },
+      snippet: {
+        channelTitle: exact.snippet?.title || '',
+        title: exact.snippet?.title || '',
+        thumbnails: exact.snippet?.thumbnails || {}
+      }
+    });
+  }
+  let liveVideos = [];
+  try { liveVideos = await youtubeSearchVideos(env, { limit: Math.min(10, Math.max(limit, 5)), query, live: true }); } catch {}
+  const liveByChannelId = new Map(liveVideos.map(video => [video.channelId, video]));
+  return searchItems.slice(0, limit).map(item => {
+    const stream = liveByChannelId.get(item.id?.channelId);
+    return {
+      platform: 'youtube', id: item.id?.channelId, name: item.snippet?.channelTitle || item.snippet?.title || '',
+      username: item.snippet?.channelTitle || '', avatar: item.snippet?.thumbnails?.high?.url || '', banner: '',
+      live: Boolean(stream), category: stream?.category || '', viewers: stream?.viewerCountAvailable ? Number(stream.viewers) : null,
+      viewerCountAvailable: Boolean(stream?.viewerCountAvailable),
+      url: `https://www.youtube.com/channel/${encodeURIComponent(item.id?.channelId || '')}`
+    };
+  });
 }
 
 async function searchKickChannels(env, query, limit) {
@@ -712,7 +741,7 @@ export async function globalSearch(env, query, limit = 20) {
   const q = String(query || '').trim();
   if (q.length < 2) return [];
   const perPlatform = clampInt(Math.ceil(Number(limit || 20) / 4), 2, 10, 5);
-  const cacheKey = `search:global:v3:${q.toLowerCase()}:${perPlatform}`;
+  const cacheKey = `search:global:v5:${q.toLowerCase()}:${perPlatform}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   const settled = await Promise.allSettled([
