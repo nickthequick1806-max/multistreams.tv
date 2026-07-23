@@ -241,11 +241,9 @@
     real.connections = connectionPayload.connections || [];
     const followedStreams = followingPayload.streams || [];
     const nextFollowingIds = new Set(followedStreams.map(stream => `${stream.platform}:${stream.username || stream.name}`));
-    if (real.followingIds.size && settings.liveNotificationsEnabled !== false) {
-      followedStreams.filter(stream => !real.followingIds.has(`${stream.platform}:${stream.username || stream.name}`)).forEach(stream => {
-        showLiveNotificationPopup?.({ username: stream.name || stream.username, title: stream.title || `${stream.name || stream.username} is now live`, avatar: stream.avatar || '', platform: stream.platform, category: stream.category || 'Live', viewers: compact(stream.viewers) });
-      });
-    }
+    const newlyLive = real.followingIds.size && settings.liveNotificationsEnabled !== false
+      ? followedStreams.filter(stream => !real.followingIds.has(`${stream.platform}:${stream.username || stream.name}`))
+      : [];
     real.followingIds = nextFollowingIds;
     mockFollowedData = followedStreams.map(stream => ({
       name: stream.name || stream.username,
@@ -264,6 +262,10 @@
     }
     updateConnectAccountStatuses?.();
     mockLiveStreamers = followedStreams.map(stream => ({ username: stream.name || stream.username, title: stream.title || '', avatar: stream.avatar || '', platform: stream.platform, category: stream.category || 'Live', viewers: compact(stream.viewers), timestamp: new Date().toISOString() }));
+    saveLiveNotifications?.();
+    newlyLive.forEach(stream => {
+      showLiveNotificationPopup?.({ username: stream.name || stream.username, title: stream.title || `${stream.name || stream.username} is now live`, avatar: stream.avatar || '', platform: stream.platform, category: stream.category || 'Live', viewers: compact(stream.viewers) });
+    });
     calculateNotificationCounts?.();
   }
 
@@ -845,9 +847,21 @@
     try { const items = sortBrowseItems(await fetchBrowse('live')); content.innerHTML = `<div class="browse-section-label">Live on ${escapeHTML(currentBrowsePlatform)}</div>${renderBrowseLiveCards(items)}`; bindBrowseStreamCards(content); }
     catch (error) { content.innerHTML = renderBrowseEmpty(error.message); }
   };
+  function browseMediaDuration(item) {
+    const value = item?.duration ?? item?.durationSeconds;
+    if (typeof value === 'number' && Number.isFinite(value) && value > 0) {
+      const total = Math.floor(value);
+      const hours = Math.floor(total / 3600);
+      const minutes = Math.floor((total % 3600) / 60);
+      const seconds = String(total % 60).padStart(2, '0');
+      return hours ? `${hours}:${String(minutes).padStart(2, '0')}:${seconds}` : `${minutes}:${seconds}`;
+    }
+    return typeof value === 'string' && value !== 'undefined' ? value : '';
+  }
+
   window.loadBrowseClips = async () => {
     const content = document.getElementById('browse-content'); if (!content) return; browseLoading();
-    try { const items = sortBrowseItems(await fetchBrowse('clips')); content.innerHTML = `<div class="browse-section-label">Popular clips and videos on ${escapeHTML(currentBrowsePlatform)}</div>${renderBrowseClipCards(items.map(item => ({ ...item, username: item.username || item.name, daysAgo: Math.max(0, Math.floor((Date.now() - new Date(item.createdAt || Date.now()).getTime()) / 86400000)), duration: typeof item.duration === 'number' ? `${Math.floor(item.duration / 60)}:${String(Math.floor(item.duration % 60)).padStart(2, '0')}` : item.duration, videoEmbed: item.embedUrl })))}`; bindBrowseClipCards(content); }
+    try { const items = sortBrowseItems(await fetchBrowse('clips')); content.innerHTML = `<div class="browse-section-label">Popular clips and videos on ${escapeHTML(currentBrowsePlatform)}</div>${renderBrowseClipCards(items.map(item => ({ ...item, username: item.username || item.name, daysAgo: Math.max(0, Math.floor((Date.now() - new Date(item.createdAt || Date.now()).getTime()) / 86400000)), duration: browseMediaDuration(item), videoEmbed: item.embedUrl })))}`; bindBrowseClipCards(content); }
     catch (error) { content.innerHTML = renderBrowseEmpty(error.message); }
   };
   window.selectCategory = async (name, image, id) => {
@@ -861,7 +875,7 @@
     try {
       const view = currentCategoryMedia === 'clips' ? 'clips' : 'live';
       const items = sortBrowseItems(await fetchBrowse(view, currentBrowseCategory.id));
-      const clips = items.map(item => ({ ...item, username: item.username || item.name, daysAgo: Math.max(0, Math.floor((Date.now() - new Date(item.createdAt || Date.now()).getTime()) / 86400000)), duration: typeof item.duration === 'number' ? `${Math.floor(item.duration / 60)}:${String(Math.floor(item.duration % 60)).padStart(2, '0')}` : item.duration, videoEmbed: item.embedUrl }));
+      const clips = items.map(item => ({ ...item, username: item.username || item.name, daysAgo: Math.max(0, Math.floor((Date.now() - new Date(item.createdAt || Date.now()).getTime()) / 86400000)), duration: browseMediaDuration(item), videoEmbed: item.embedUrl }));
       content.innerHTML = `<section class="category-detail"><div class="category-detail-top"><div class="category-detail-art">${currentBrowseCategory.image ? `<img src="${escapeHTML(currentBrowseCategory.image)}" alt="">` : ''}</div><div class="category-detail-info"><h2>${escapeHTML(currentBrowseCategory.name)}</h2><div class="category-detail-stats">${['kick', 'youtube'].includes(currentBrowsePlatform) ? '' : `<span>${compact(currentBrowseCategory.watching)} watching</span>`}<span>Live platform data</span></div></div><button class="category-back-button" onclick="returnToBrowseCategories()"><i class="fa-solid fa-arrow-left"></i> Categories</button></div>
         <div class="category-media-tabs"><button class="category-media-tab ${view === 'live' ? 'active' : ''}" onclick="switchCategoryMedia('live')">Livestreams</button><button class="category-media-tab ${view === 'clips' ? 'active' : ''}" onclick="switchCategoryMedia('clips')">Clips</button></div>
         <div class="category-results-heading"><span>${items.length} ${view === 'live' ? 'live channels' : 'clips'}</span><span>Real-time</span></div>${view === 'live' ? renderBrowseLiveCards(items) : renderBrowseClipCards(clips)}</section>`;
@@ -912,33 +926,52 @@
     streamHoverCloseTimer = setTimeout(() => card.remove(), 140);
   };
 
-  window.showStreamHoverCard = async (stream, targetElement) => {
+  function streamHoverCardMarkup(detail, stream) {
+    const socialMarkup = (detail.socials || []).map(social => `<a href="${escapeHTML(social.url)}" target="_blank" rel="noopener" title="${escapeHTML(social.platform)}">${getPlatformIcon(social.platform)}</a>`).join('');
+    return `<div class="hover-banner" style="background-image:url('${String(detail.banner || '').replace(/['()]/g, '')}')"></div><div class="hover-pfp-wrapper">${avatarMarkup({ ...detail, platform: stream.platform }, 'hover-pfp')}${detail.live ? '<div class="hover-live-badge">LIVE</div>' : ''}</div>
+      <div class="hover-content"><div class="hover-username">${escapeHTML(detail.name || stream.displayName || stream.name)}</div>${detail.followers === null || detail.followers === undefined ? '' : `<div class="hover-followers">${compact(detail.followers)} Followers</div>`}
+      <div class="hover-streaming">${detail.live ? `Streaming <span class="accent-text">${escapeHTML(detail.category || 'Live')}</span> with <span class="accent-text">${compact(detail.viewers)}</span> viewers` : 'Currently offline'}</div>
+      <div class="hover-socials">${socialMarkup}</div><div class="hover-actions"><a class="hover-follow-btn" href="${escapeHTML(detail.url || '#')}" target="_blank" rel="noopener">Open Channel</a><button class="hover-report-btn" title="Report" onclick="openFeedbackModal?.()"><i class="fas fa-exclamation-triangle"></i></button></div></div>`;
+  }
+
+  function positionStreamHoverCard(card, targetElement) {
+    const rect = targetElement.getBoundingClientRect();
+    const cardHeight = card.offsetHeight || 300;
+    const cardWidth = card.offsetWidth || 320;
+    const spaceBelow = window.innerHeight - rect.bottom;
+    const showAbove = spaceBelow < cardHeight + 4 && rect.top > spaceBelow;
+    const requestedTop = showAbove ? rect.top - cardHeight + 2 : rect.bottom - 2;
+    card.classList.toggle('flipped-above', showAbove);
+    card.style.left = `${Math.min(window.innerWidth - cardWidth - 10, Math.max(10, rect.left))}px`;
+    card.style.top = `${Math.max(10, Math.min(window.innerHeight - cardHeight - 10, requestedTop))}px`;
+  }
+
+  window.showStreamHoverCard = (stream, targetElement) => {
     hideStreamHoverCard(true);
     const requestToken = ++streamHoverRequestToken;
     activeStreamHoverTarget = targetElement;
-    let detail;
-    try { detail = await resolveChannel(stream.platform, stream.name); } catch { detail = { ...stream, name: stream.displayName, username: stream.name, live: stream.live, url: stream.url, socials: [] }; }
-    if (requestToken !== streamHoverRequestToken || !targetElement?.isConnected || !targetElement.matches(':hover')) return;
     const card = document.createElement('div'); card.className = 'stream-hover-card'; card.id = 'stream-hover-card';
-    const socialMarkup = (detail.socials || []).map(social => `<a href="${escapeHTML(social.url)}" target="_blank" rel="noopener" title="${escapeHTML(social.platform)}">${getPlatformIcon(social.platform)}</a>`).join('');
-    card.innerHTML = `<div class="hover-banner" style="background-image:url('${String(detail.banner || '').replace(/['()]/g, '')}')"></div><div class="hover-pfp-wrapper">${avatarMarkup({ ...detail, platform: stream.platform }, 'hover-pfp')}${detail.live ? '<div class="hover-live-badge">LIVE</div>' : ''}</div>
-      <div class="hover-content"><div class="hover-username">${escapeHTML(detail.name || stream.displayName)}</div>${detail.followers === null || detail.followers === undefined ? '' : `<div class="hover-followers">${compact(detail.followers)} Followers</div>`}
-      <div class="hover-streaming">${detail.live ? `Streaming <span class="accent-text">${escapeHTML(detail.category || 'Live')}</span> with <span class="accent-text">${compact(detail.viewers)}</span> viewers` : 'Currently offline'}</div>
-      <div class="hover-socials">${socialMarkup}</div><div class="hover-actions"><a class="hover-follow-btn" href="${escapeHTML(detail.url || '#')}" target="_blank" rel="noopener">Open Channel</a><button class="hover-report-btn" title="Report" onclick="openFeedbackModal?.()"><i class="fas fa-exclamation-triangle"></i></button></div></div>`;
+    const initialDetail = { ...stream, name: stream.displayName || stream.name, username: stream.name, live: stream.live !== false, url: stream.url, socials: [] };
+    card.innerHTML = streamHoverCardMarkup(initialDetail, stream);
     document.body.appendChild(card);
-    const rect = targetElement.getBoundingClientRect();
-    card.style.left = `${Math.min(window.innerWidth - 340, Math.max(10, rect.left + window.scrollX))}px`;
-    card.style.top = `${rect.bottom + window.scrollY + 8}px`;
     card.style.display = 'block';
+    card.style.position = 'fixed';
+    positionStreamHoverCard(card, targetElement);
     card.addEventListener('mouseenter', () => clearTimeout(streamHoverCloseTimer));
     card.addEventListener('mouseleave', hideStreamHoverCard);
+    void resolveChannel(stream.platform, stream.name).then(detail => {
+      if (requestToken !== streamHoverRequestToken || !card.isConnected || !targetElement?.isConnected) return;
+      card.innerHTML = streamHoverCardMarkup(detail, stream);
+      positionStreamHoverCard(card, targetElement);
+    }).catch(() => {});
   };
 
   document.addEventListener('pointermove', event => {
     if (!activeStreamHoverTarget) return;
     const card = document.getElementById('stream-hover-card');
     if (activeStreamHoverTarget.contains(event.target) || card?.contains(event.target)) return;
-    hideStreamHoverCard();
+    clearTimeout(streamHoverCloseTimer);
+    streamHoverCloseTimer = setTimeout(() => hideStreamHoverCard(), 220);
   }, true);
 
   // Server-backed profiles, follows, and privacy.

@@ -3998,7 +3998,7 @@ header {
   top: 76px !important;
   right: 18px !important;
   bottom: auto !important;
-  width: min(460px, calc(100vw - 36px)) !important;
+  width: min(540px, calc(100vw - 36px)) !important;
   border: 1px solid color-mix(in srgb, var(--accent) 28%, var(--border)) !important;
   border-radius: 13px !important;
   background:
@@ -4007,8 +4007,25 @@ header {
   box-shadow: 0 20px 48px rgba(0, 0, 0, .46) !important;
   backdrop-filter: blur(18px);
 }
-#live-notification-popup .live-notif-content { padding: 13px !important; }
+#live-notification-popup .live-notif-content { min-height: 88px; padding: 13px 14px !important; align-items: center !important; }
 #live-notification-popup .live-notif-watch-btn { border-radius: 8px !important; box-shadow: 0 7px 18px color-mix(in srgb, var(--accent) 16%, transparent); }
+#live-notification-popup .live-notif-copy { min-width: 0; flex: 1; align-self: center; }
+#live-notification-popup .live-notif-headline { display: flex; align-items: center; gap: 5px; color: #fff; font-size: 14px; font-weight: 760; line-height: 1.3; }
+#live-notification-popup .live-notif-platform { display: inline-flex; width: 15px; height: 15px; flex: 0 0 15px; align-items: center; justify-content: center; }
+#live-notification-popup .live-notif-title {
+  display: -webkit-box;
+  margin-top: 5px;
+  overflow: hidden;
+  color: #d7d9df;
+  font-size: 12.5px;
+  line-height: 1.4;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+#live-notification-popup .live-notif-controls { display: flex; flex: 0 0 auto; align-items: center; align-self: stretch; gap: 7px; justify-content: center; }
+#live-notification-popup .live-notif-close { width: 32px; height: 40px; padding: 0 !important; align-items: center; justify-content: center; }
+
+#storage-notice { max-width: 520px !important; }
 
 /* Compact layout picker */
 .layout-picker-wrap { position: relative; display: flex; }
@@ -5486,7 +5503,7 @@ header {
     border: 1px solid var(--border);
     border-radius: 12px;
     padding: 18px 24px;
-    max-width: 460px;
+    max-width: 520px;
     box-shadow: 0 8px 25px rgba(0,0,0,0.4);
     z-index: 10;
     display: none;
@@ -11199,25 +11216,25 @@ function showLiveNotificationPopup(streamer = null) {
   popup.id = 'live-notification-popup';
 
   popup.innerHTML = `
-    <div class="live-notif-content" style="display: flex; align-items: flex-start; gap: 12px; padding: 14px 16px;">
+    <div class="live-notif-content">
       
       <img src="${streamer.avatar}" class="live-notif-avatar" 
            style="width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0; border: 1px solid #27272a;">
 
-      <div style="flex: 1; min-width: 0;">
-        <div style="font-weight: 700; font-size: 14.5px; color: #fff; margin-bottom: 4px; display: flex; align-items: center; gap: 6px;">
-          ${streamer.username} just went live on
-          <span style="display: inline-flex; align-items: center; justify-content: center; width: 16px; height: 16px;">
+      <div class="live-notif-copy">
+        <div class="live-notif-headline">
+          <span>${escapeBrowseHTML(streamer.username)} just went live on</span>
+          <span class="live-notif-platform" aria-label="${escapeBrowseHTML(streamer.platform)}">
             ${platformIcon}
           </span>
         </div>
         
-        <div style="font-size: 13.5px; color: #fff; line-height: 1.35; margin-bottom: 10px;">
-          ${streamer.title}
+        <div class="live-notif-title">
+          ${escapeBrowseHTML(streamer.title || 'Live now')}
         </div>
       </div>
 
-      <div style="display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-top: 2px;">
+      <div class="live-notif-controls">
         <button class="live-notif-watch-btn" 
                 onclick="watchLiveStreamFromPopup('${streamer.username}', '${streamer.platform}', this)">
           <i class="fa-solid fa-video"></i>
@@ -11226,7 +11243,7 @@ function showLiveNotificationPopup(streamer = null) {
 
         <button class="live-notif-close" 
                 onclick="hideLiveNotificationPopup()"
-                style="font-size: 18px; padding: 4px 8px; color: #71717a; background: transparent; border: none; cursor: pointer;">
+                style="font-size: 18px; color: #71717a; background: transparent; border: none; cursor: pointer;">
           ✕
         </button>
       </div>
@@ -11311,6 +11328,8 @@ function addLiveNotificationToModal(streamer) {
   if (!streamer || !streamer.username) return;
 
   const username = streamer.username;
+  notificationsMarkedAsRead = false;
+  localStorage.setItem('notificationsMarkedAsRead', 'false');
 
   // Check if this notification was previously deleted by the user
   const wasDeleted = deletedLiveNotifications.includes(username);
@@ -16483,7 +16502,7 @@ function renderBrowseClipCards(clips) {
         <article class="browse-clip-card" data-clip-index="${index}" tabindex="0">
           <div class="browse-media-thumb">
             <img src="${clip.thumbnail}" alt="" loading="lazy">
-            <span class="browse-duration">${clip.duration}</span>
+            ${clip.duration ? `<span class="browse-duration">${escapeBrowseHTML(clip.duration)}</span>` : ''}
             <span class="browse-view-count">${formatBrowseCount(clip.views)} views</span>
           </div>
           <div class="browse-card-body">
