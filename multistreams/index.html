@@ -121,7 +121,9 @@
   .search-icon {
     width: 16px;
     height: 16px;
-    color: var(--text-muted);
+    display: block;
+    object-fit: contain;
+    opacity: .92;
     pointer-events: none;
   }
   .ai-search-trigger {
@@ -5190,9 +5192,7 @@ header {
   </div>
 
   <button id="ai-search-trigger" class="ai-search-trigger" type="button" onclick="openAISearchModal(event)" aria-label="Open AI stream search" title="AI Stream Search">
-    <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-    </svg>
+    <img class="search-icon" src="/logos%20and%20assets/AI_SEARCH_ICON.png" alt="" aria-hidden="true">
   </button>
   
   <!-- Add Stream Button (only shows for links) -->
@@ -6821,6 +6821,42 @@ let profileWatchLastTick = Date.now();
 // Persistent deleted notifications
 let deletedUpdateNotifications = JSON.parse(localStorage.getItem('deletedUpdateNotifications') || '[]');
 let deletedLiveNotifications = JSON.parse(localStorage.getItem('deletedLiveNotifications') || '[]');
+
+function liveNotificationIdentity(streamer = {}) {
+  const platform = String(streamer.platform || 'unknown').trim().toLowerCase();
+  const username = String(streamer.channelUsername || streamer.username || streamer.name || '').trim().toLowerCase();
+  const startedAt = String(streamer.startedAt || streamer.streamStartedAt || '').trim();
+  return { platform, username, startedAt, base: `${platform}:${username}`, key: `${platform}:${username}:${startedAt || 'current'}` };
+}
+
+function isLiveNotificationDismissed(streamer) {
+  const identity = liveNotificationIdentity(streamer);
+  return deletedLiveNotifications.some(value => {
+    const saved = String(value || '').trim().toLowerCase();
+    return saved === identity.key.toLowerCase() || saved === identity.base || saved === identity.username;
+  });
+}
+
+function saveDeletedLiveNotifications() {
+  deletedLiveNotifications = [...new Set(deletedLiveNotifications.map(String).filter(Boolean))];
+  localStorage.setItem('deletedLiveNotifications', JSON.stringify(deletedLiveNotifications));
+}
+
+function pruneDeletedLiveNotifications(activeStreams = []) {
+  const identities = activeStreams.map(liveNotificationIdentity);
+  const activeKeys = new Set(identities.map(item => item.key.toLowerCase()));
+  const activeBases = new Set(identities.map(item => item.base));
+  const activeUsernames = new Set(identities.map(item => item.username));
+  deletedLiveNotifications = deletedLiveNotifications.filter(value => {
+    const saved = String(value || '').trim().toLowerCase();
+    if (!saved) return false;
+    const colonCount = (saved.match(/:/g) || []).length;
+    if (colonCount >= 2) return activeKeys.has(saved);
+    if (colonCount === 1) return activeBases.has(saved);
+    return activeUsernames.has(saved);
+  });
+  saveDeletedLiveNotifications();
+}
 
 /* ===== YOUTUBE HELPERS ===== */
 // Extract YouTube video ID from URL or raw ID
@@ -11047,9 +11083,7 @@ function renderLiveNotifications(container) {
   }
 
   // Normal flow
-  const visibleLive = mockLiveStreamers.filter(streamer => 
-    !deletedLiveNotifications.includes(streamer.username)
-  );
+  const visibleLive = mockLiveStreamers.filter(streamer => !isLiveNotificationDismissed(streamer));
 
   liveNotificationCount = visibleLive.length;
   updateNotificationBadge();
@@ -11070,7 +11104,7 @@ function renderLiveNotifications(container) {
     const platformIcon = getPlatformIcon(streamer.platform);
     
     card.innerHTML = `
-      <img src="${streamer.avatar}" class="notification-menu-icon" alt="">
+      ${typeof renderPlatformAvatar === 'function' ? renderPlatformAvatar(streamer, 'notification-menu-icon') : `<img src="${escapeBrowseHTML(streamer.avatar || '')}" class="notification-menu-icon" alt="">`}
       <div class="notification-menu-copy">
         <strong>${streamer.username} is live <span style="display:inline-flex;width:13px;height:13px;vertical-align:middle;">${platformIcon}</span></strong>
         <p>${streamer.title}</p>
@@ -11177,8 +11211,14 @@ function watchLiveStream(username, platform, btn) {
 }
 
 function removeLiveNotification(username, btn) {
-  deletedLiveNotifications.push(username);
-  localStorage.setItem('deletedLiveNotifications', JSON.stringify(deletedLiveNotifications));
+  const streamer = mockLiveStreamers.find(item => item.username === username) || { username };
+  const notificationKey = liveNotificationIdentity(streamer).key;
+  if (!deletedLiveNotifications.some(value => String(value).toLowerCase() === notificationKey.toLowerCase())) {
+    deletedLiveNotifications.push(notificationKey);
+  }
+  mockLiveStreamers = mockLiveStreamers.filter(item => liveNotificationIdentity(item).key !== notificationKey);
+  saveLiveNotifications();
+  saveDeletedLiveNotifications();
 
   const content = document.getElementById('notification-content');
   renderLiveNotifications(content);
@@ -11211,6 +11251,9 @@ function showLiveNotificationPopup(streamer = null) {
   }
 
   const platformIcon = getPlatformIcon(streamer.platform);
+  const popupAvatar = typeof renderPlatformAvatar === 'function'
+    ? renderPlatformAvatar(streamer, 'live-notif-avatar')
+    : `<img src="${escapeBrowseHTML(streamer.avatar || '')}" class="live-notif-avatar" alt="">`;
 
   const popup = document.createElement('div');
   popup.id = 'live-notification-popup';
@@ -11218,8 +11261,7 @@ function showLiveNotificationPopup(streamer = null) {
   popup.innerHTML = `
     <div class="live-notif-content">
       
-      <img src="${streamer.avatar}" class="live-notif-avatar" 
-           style="width: 42px; height: 42px; border-radius: 50%; flex-shrink: 0; border: 1px solid #27272a;">
+      ${popupAvatar}
 
       <div class="live-notif-copy">
         <div class="live-notif-headline">
@@ -11236,7 +11278,7 @@ function showLiveNotificationPopup(streamer = null) {
 
       <div class="live-notif-controls">
         <button class="live-notif-watch-btn" 
-                onclick="watchLiveStreamFromPopup('${streamer.username}', '${streamer.platform}', this)">
+                onclick="watchLiveStreamFromPopup('${streamer.channelUsername || streamer.username}', '${streamer.platform}', this)">
           <i class="fa-solid fa-video"></i>
           Watch now
         </button>
@@ -11332,18 +11374,16 @@ function addLiveNotificationToModal(streamer) {
   localStorage.setItem('notificationsMarkedAsRead', 'false');
 
   // Check if this notification was previously deleted by the user
-  const wasDeleted = deletedLiveNotifications.includes(username);
+  const wasDeleted = isLiveNotificationDismissed(streamer);
 
   // If it was deleted before, remove it from the deleted list so it can reappear
-  if (wasDeleted) {
-    deletedLiveNotifications = deletedLiveNotifications.filter(u => u !== username);
-    localStorage.setItem('deletedLiveNotifications', JSON.stringify(deletedLiveNotifications));
-  }
+  if (wasDeleted) return;
 
   // Check if it's already in the current live list
-  const alreadyInList = mockLiveStreamers.some(s => s.username === username);
+  const notificationKey = liveNotificationIdentity(streamer).key;
+  const alreadyInList = mockLiveStreamers.some(item => liveNotificationIdentity(item).key === notificationKey);
 
-  if (alreadyInList && !wasDeleted) {
+  if (alreadyInList) {
     // Already exists and wasn't deleted → do nothing
     return;
   }
@@ -11387,17 +11427,18 @@ function loadLiveNotifications() {
 }
 
 function deleteLiveNotification(username, cardElement) {
-  // Remove from current list
-  mockLiveStreamers = mockLiveStreamers.filter(s => s.username !== username);
+  const streamer = mockLiveStreamers.find(item => item.username === username) || { username };
+  const notificationKey = liveNotificationIdentity(streamer).key;
+  mockLiveStreamers = mockLiveStreamers.filter(item => liveNotificationIdentity(item).key !== notificationKey);
 
   // Add to deleted list (so it stays deleted after reload)
-  if (!deletedLiveNotifications.includes(username)) {
-    deletedLiveNotifications.push(username);
+  if (!deletedLiveNotifications.some(value => String(value).toLowerCase() === notificationKey.toLowerCase())) {
+    deletedLiveNotifications.push(notificationKey);
   }
 
   // Save both
   saveLiveNotifications();
-  localStorage.setItem('deletedLiveNotifications', JSON.stringify(deletedLiveNotifications));
+  saveDeletedLiveNotifications();
 
   // Remove from DOM
   if (cardElement) cardElement.remove();
@@ -16266,9 +16307,7 @@ function calculateNotificationCounts() {
   }
 
   // Live notifications (respecting deleted ones)
-  const visibleLive = mockLiveStreamers.filter(streamer => 
-    !deletedLiveNotifications.includes(streamer.username)
-  );
+  const visibleLive = mockLiveStreamers.filter(streamer => !isLiveNotificationDismissed(streamer));
   liveNotificationCount = visibleLive.length;
 
   // Update notifications count
@@ -16457,9 +16496,9 @@ function renderBrowseLiveCards(streams) {
   const contentMarkup = streams.length ? `
     <div class="browse-stream-grid">
       ${streams.map(stream => `
-        <article class="browse-stream-card" data-stream-name="${escapeBrowseHTML(stream.name)}" data-stream-platform="${escapeBrowseHTML(stream.platform)}" tabindex="0">
+        <article class="browse-stream-card" data-stream-name="${escapeBrowseHTML(stream.platform === 'youtube' && stream.id ? stream.id : stream.username || stream.name)}" data-stream-platform="${escapeBrowseHTML(stream.platform)}" tabindex="0">
           <div class="browse-media-thumb">
-            <img src="${stream.thumbnail}" alt="" loading="lazy">
+            <img src="${escapeBrowseHTML(stream.thumbnail || '')}" alt="" loading="lazy">
             <span class="browse-live-badge">LIVE</span>
             ${typeof hasPlatformViewerCount === 'function' && hasPlatformViewerCount(stream) ? `<span class="browse-view-count">${formatBrowseCount(stream.viewers)} viewers</span>` : ''}
           </div>
@@ -16471,7 +16510,7 @@ function renderBrowseLiveCards(streams) {
                 <div class="browse-card-subtitle">${escapeBrowseHTML(stream.title)}</div>
               </div>
             </div>
-            <div class="browse-card-tags">${stream.tags.map(tag => `<span class="browse-tag">${escapeBrowseHTML(tag)}</span>`).join('')}</div>
+            <div class="browse-card-tags">${(stream.tags || []).map(tag => `<span class="browse-tag">${escapeBrowseHTML(tag)}</span>`).join('')}</div>
           </div>
         </article>
       `).join('')}
@@ -16759,7 +16798,7 @@ document.querySelectorAll('[data-layout-option]').forEach(option => {
   option.setAttribute('aria-pressed', String(option.dataset.layoutOption === currentLayout));
 });
 mockLiveStreamers = [];
-deletedLiveNotifications = [];
+loadLiveNotifications();
 calculateNotificationCounts();   // ← Add this line
 setupModal();
 initBrowseSearch();
@@ -16787,6 +16826,6 @@ if (channels.length > 0 && !activeChat) {
 applyLanguage(settings.language || 'en');
 
 </script>
-<script src="/backend-client.js?v=20260723.3"></script>
+<script src="/backend-client.js?v=20260723.4"></script>
 </body>
 </html>
