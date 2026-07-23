@@ -75,5 +75,8 @@ test('OAuth, AI recovery, official YouTube data, and share routes have regressio
   assert.match(worker, /async function layoutShell/);
   assert.match(wrangler, /"run_worker_first":\s*\[[^\]]*"\/layout"/);
   assert.match(html, /function createLayoutShareLink/);
+  assert.match(html, /async function hydrateLoadedLayoutChannels/);
+  assert.match(html, /channels = await hydrateLoadedLayoutChannels\(streams\)/);
+  assert.match(backendClient, /if \(!incomingSharedLayout\?\.streams\?\.length\) jobs\.push\(loadRemoteState\(\)\)/);
   assert.doesNotMatch(html, /enteringGrid[\s\S]{0,500}player\.kick\.com/);
 });

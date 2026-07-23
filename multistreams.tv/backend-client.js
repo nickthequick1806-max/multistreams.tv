@@ -339,8 +339,20 @@
       stopLiveNotificationSimulator?.();
       mockLiveStreamers = [];
       const session = await refreshSession();
+      const incomingSharedLayout = typeof parseProfileLayoutLink === 'function'
+        ? parseProfileLayoutLink(location.href)
+        : null;
       const jobs = [loadFeatured()];
-      if (session.authenticated) jobs.push(loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData(), loadSecurityDevices());
+      if (session.authenticated) {
+        jobs.push(
+          loadRemoteProfile(),
+          loadRemoteSettings(),
+          loadConnectionsAndFollowing(),
+          loadRewardData(),
+          loadSecurityDevices()
+        );
+        if (!incomingSharedLayout?.streams?.length) jobs.push(loadRemoteState());
+      }
       else {
         channels = [];
         savedLayouts = [];
@@ -353,7 +365,7 @@
       await Promise.allSettled(jobs);
       real.bootstrapped = true;
       const params = new URLSearchParams(location.search);
-      const sharedLayout = typeof parseProfileLayoutLink === 'function' ? parseProfileLayoutLink(location.href) : null;
+      const sharedLayout = incomingSharedLayout;
       if (sharedLayout?.streams?.length) {
         applyLoadedLayout({ name: sharedLayout.name || 'Shared Layout', streams: sharedLayout.streams, layout: sharedLayout.layout, source: 'Shared link' });
       }

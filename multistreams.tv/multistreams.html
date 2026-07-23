@@ -7599,9 +7599,34 @@ function normalizeLoadedLayoutChannels(streams = []) {
   }).filter(Boolean);
 }
 
-function applyLoadedLayout({ name = 'Layout', streams = [], layout = 'grid', source = 'Layout' } = {}) {
+async function hydrateLoadedLayoutChannels(streams = []) {
+  const normalized = normalizeLoadedLayoutChannels(streams);
+  return Promise.all(normalized.map(async stream => {
+    if (stream.platform !== 'youtube') return stream;
+    try {
+      const detail = await getYouTubeChannelDetail(stream.videoId || stream.channelId || stream.name);
+      if (!detail) return { ...stream, live: false, videoId: getYouTubeID(stream.name) || '', channelId: stream.channelId || '' };
+      const requestedVideo = detail.requestedVideo || null;
+      const liveStream = detail.stream || null;
+      const live = requestedVideo ? requestedVideo.live === true : detail.live === true;
+      const videoId = liveStream?.id || requestedVideo?.id || getYouTubeID(stream.name) || '';
+      return {
+        ...stream,
+        name: videoId || detail.id || stream.name,
+        displayName: detail.name || stream.displayName,
+        videoId,
+        channelId: detail.id || stream.channelId || '',
+        live
+      };
+    } catch (error) {
+      return { ...stream, live: false, videoId: getYouTubeID(stream.name) || '', channelId: stream.channelId || '' };
+    }
+  }));
+}
+
+async function applyLoadedLayout({ name = 'Layout', streams = [], layout = 'grid', source = 'Layout' } = {}) {
   const normalizedLayout = normalizeLayoutType(layout);
-  channels = normalizeLoadedLayoutChannels(streams);
+  channels = await hydrateLoadedLayoutChannels(streams);
   activeChat = null;
   activeChats = [];
   if (chatFrame) chatFrame.innerHTML = '';
