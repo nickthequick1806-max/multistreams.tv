@@ -708,6 +708,24 @@
     border-radius: 6px;
     outline: none;
   }
+  .share-layout-name-input {
+    display: block;
+    width: 100%;
+    min-height: 34px;
+    box-sizing: border-box;
+    background: var(--bg-base);
+    border: 1px solid var(--border);
+    color: var(--text-main);
+    padding: 8px 12px;
+    border-radius: 6px;
+    outline: none;
+    font: inherit;
+    margin-bottom: 12px;
+  }
+  .share-layout-name-input:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.12);
+  }
   .modal-input-group button {
     background: var(--accent);
     color: #fff;
@@ -5682,7 +5700,7 @@ header {
     </div>
     <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 12px;">Copy this link to share your exact layout and streams.</p>
     <label for="share-layout-name-input" style="display:block;margin-bottom:6px;font-size:12px;font-weight:700;">Layout name</label>
-    <input type="text" id="share-layout-name-input" maxlength="80" value="Shared Layout" oninput="refreshShareLayoutLink()" style="width:100%;margin-bottom:12px;">
+    <input type="text" id="share-layout-name-input" class="share-layout-name-input" maxlength="80" value="Shared Layout" oninput="refreshShareLayoutLink()">
     <div class="modal-input-group">
       <input type="text" id="share-link-input" readonly>
       <button onclick="copyShareLink()">Copy</button>
@@ -6793,6 +6811,26 @@ function getYouTubeID(input) {
     if (!input) return null;
     const match = input.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/live\/|youtube\.com\/shorts\/)([a-zA-Z0-9_-]{11})/);
     return match ? match[1] : (input.length === 11 ? input : null);
+}
+
+async function getYouTubeChannelDetail(identifier) {
+    try {
+        const res = await fetch(`/api/channel/youtube/${encodeURIComponent(identifier)}`);
+        const data = await res.json();
+        return res.ok ? data.channel || null : null;
+    } catch (error) {
+        return null;
+    }
+}
+
+function getYouTubeStreamVideoId(ch) {
+    return ch?.videoId || getYouTubeID(ch?.name || '') || '';
+}
+
+function getYouTubePlayerSrc(ch) {
+    const videoId = getYouTubeStreamVideoId(ch);
+    if (!videoId || ch?.live === false) return 'about:blank';
+    return `https://www.youtube.com/embed/${videoId}?autoplay=1&mute=${ch?.muted ? 1 : 0}`;
 }
 
 // Search for channel ID using channel name
@@ -11359,11 +11397,14 @@ async function handleYouTubeOfflineBanner(frame, ch) {
   if (statusDiv) statusDiv.remove();
 
   try {
-    // Check if this YouTube video is actually live
-    const res = await fetch(`/api/channel/youtube/${encodeURIComponent(ch.name)}`);
-    const data = await res.json();
-    const requestedVideo = data.channel?.requestedVideo;
-    const isLive = requestedVideo ? requestedVideo.live === true : data.channel?.live === true;
+    let isLive = typeof ch.live === 'boolean' ? ch.live : null;
+    if (isLive === null) {
+      const detail = await getYouTubeChannelDetail(ch.videoId || ch.channelId || ch.name);
+      isLive = detail?.requestedVideo ? detail.requestedVideo.live === true : detail?.live === true;
+      ch.live = isLive;
+      ch.channelId = ch.channelId || detail?.id || '';
+      ch.videoId = ch.videoId || detail?.stream?.id || detail?.requestedVideo?.id || '';
+    }
 
     if (!isLive) {
       // Create and show offline banner
@@ -11393,11 +11434,13 @@ async function handleYouTubeOfflineBanner(frame, ch) {
 }
 
 async function checkYouTubeLiveStatus(videoId) {
+  const channel = typeof videoId === 'object' ? videoId : null;
+  if (channel && typeof channel.live === 'boolean') return channel.live;
   try {
-    const res = await fetch(`/api/channel/youtube/${encodeURIComponent(videoId)}`);
-    const data = await res.json();
-    const requestedVideo = data.channel?.requestedVideo;
-    return requestedVideo ? requestedVideo.live === true : data.channel?.live === true;
+    const identifier = channel?.videoId || channel?.channelId || channel?.name || videoId;
+    const detail = await getYouTubeChannelDetail(identifier);
+    const requestedVideo = detail?.requestedVideo;
+    return requestedVideo ? requestedVideo.live === true : detail?.live === true;
   } catch (err) {
     console.error("YouTube live check failed:", err);
     return false;
@@ -11524,7 +11567,7 @@ function muteAllStreams() {
         let src = "";
         if (ch.platform === "twitch") src = `https://player.twitch.tv/?channel=${ch.name}&parent=${PARENT_DOMAIN}&autoplay=true&muted=${mutedParam}`;
         if (ch.platform === "kick") src = `https://player.kick.com/${ch.name}?autoplay=true&muted=${mutedParam}`;
-        if (ch.platform === "youtube") src = `https://www.youtube.com/embed/${ch.name}?autoplay=1&mute=1`;
+        if (ch.platform === "youtube") src = getYouTubePlayerSrc({ ...ch, muted: true });
         if (ch.platform === "rumble") src = getRumbleEmbedUrl(ch);
         iframe.src = src;
       }
@@ -11783,28 +11826,30 @@ function addStream(nameInput, platformInput, skipSave = false) {
             const channelId = await searchYouTubeChannelId(input);
             if (!channelId) {
                 // Channel not found → still create stream so offline banner can show
-                createYouTubeStream(input.toLowerCase(), input, platform);
+                createYouTubeStream(input.toLowerCase(), input, platform, false, '');
                 return;
             }
 
-            const liveVideoId = await getLiveVideoId(channelId);
+            const detail = await getYouTubeChannelDetail(channelId);
+            const liveVideoId = detail?.stream?.id || await getLiveVideoId(channelId);
 
-            if (liveVideoId) {
+            if (liveVideoId && detail?.live !== false) {
                 // Live stream found
-                const displayName = await getYouTubeChannelName(liveVideoId);
-                createYouTubeStream(liveVideoId, displayName, platform);
+                const displayName = detail?.name || await getYouTubeChannelName(liveVideoId);
+                createYouTubeStream(liveVideoId, displayName, platform, true, channelId);
             } else {
                 // No live stream → create stream anyway so offline banner shows
-                const displayName = await getYouTubeChannelNameFromChannelId(channelId) || input;
-                createYouTubeStream(input.toLowerCase(), displayName, platform);
+                const displayName = detail?.name || await getYouTubeChannelNameFromChannelId(channelId) || input;
+                createYouTubeStream(channelId, displayName, platform, false, channelId);
             }
         })();
         return;
     } else {
         // Direct video ID or link was provided
         (async () => {
-            const displayName = await getYouTubeChannelName(videoId);
-            createYouTubeStream(videoId, displayName || input, platform);
+            const detail = await getYouTubeChannelDetail(videoId);
+            const displayName = detail?.name || await getYouTubeChannelName(videoId);
+            createYouTubeStream(videoId, displayName || input, platform, detail?.requestedVideo?.live === true, detail?.id || '');
         })();
         return;
     }
@@ -11890,13 +11935,16 @@ function addStreamFromLink() {
       (async () => {
         const channelId = await searchYouTubeChannelId(input);
         if (channelId) {
-          const liveVideoId = await getLiveVideoId(channelId);
+          const detail = await getYouTubeChannelDetail(channelId);
+          const liveVideoId = detail?.stream?.id || await getLiveVideoId(channelId);
           if (liveVideoId) {
             addStream(liveVideoId, 'youtube');
             document.getElementById('channelInput').value = '';
             addBtn.style.display = 'none';
           } else {
-            alert("No live stream found on this YouTube channel.");
+            createYouTubeStream(channelId, detail?.name || input, 'youtube', false, channelId);
+            document.getElementById('channelInput').value = '';
+            addBtn.style.display = 'none';
           }
         } else {
           alert("YouTube channel not found.");
@@ -11934,13 +11982,17 @@ function createStream(name, displayName, platform, skipSave) {
 }
 
 // Helper for YouTube (because of async)
-function createYouTubeStream(name, displayName, platform) {
+function createYouTubeStream(name, displayName, platform, live = null, channelId = '') {
+  const videoId = getYouTubeID(name) || '';
   const newStream = {
     id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
-    name,
+    name: videoId || channelId || name,
     platform,
     muted: true,
     displayName: displayName || name,
+    videoId,
+    channelId,
+    live: typeof live === 'boolean' ? live : null,
     viewers: Math.floor(Math.random() * 50) + 1 + "K",
     time: Math.floor(Math.random() * 5) + 1 + ":" + String(Math.floor(Math.random() * 50 + 10)).padStart(2, '0')
   };
@@ -12059,7 +12111,7 @@ function toggleAudioById(id) {
     let src = "";
     if (ch.platform === "twitch") src = `https://player.twitch.tv/?channel=${ch.name}&parent=${PARENT_DOMAIN}&autoplay=true&muted=${mutedParam}`;
     if (ch.platform === "kick") src = `https://player.kick.com/${ch.name}?autoplay=true&muted=${mutedParam}`;
-    if (ch.platform === "youtube") src = `https://www.youtube.com/embed/${ch.name}?autoplay=1&mute=${ch.muted ? 1 : 0}`;
+    if (ch.platform === "youtube") src = getYouTubePlayerSrc(ch);
     if (ch.platform === "rumble") src = getRumbleEmbedUrl(ch);
     iframe.src = src;
   }
@@ -12197,9 +12249,7 @@ function renderStreams() {
       let src = "";
       if (ch.platform === "twitch") src = `https://player.twitch.tv/?channel=${ch.name}&parent=${PARENT_DOMAIN}&autoplay=true&muted=${mutedParam}`;
       if (ch.platform === "kick") src = `https://player.kick.com/${ch.name}?autoplay=true&muted=${mutedParam}`;
-      if (ch.platform === "youtube") {
-    src = `https://www.youtube.com/embed/${ch.name}?autoplay=1&mute=${ch.muted ? 1 : 0}`;
-}
+      if (ch.platform === "youtube") src = getYouTubePlayerSrc(ch);
       if (ch.platform === "rumble") src = getRumbleEmbedUrl(ch);
 
       frame.innerHTML = `
@@ -12648,7 +12698,7 @@ function loadChat(ch) {
   } 
   else if (ch.platform === "youtube") {
     // Check if stream is live
-    checkYouTubeLiveStatus(ch.name).then(isLive => {
+    checkYouTubeLiveStatus(ch).then(isLive => {
       if (!isLive) {
         // Show custom offline chat UI
         chatFrame.innerHTML = `
@@ -12704,7 +12754,12 @@ function loadChat(ch) {
         `;
       } else {
         // Stream is live → show normal YouTube chat
-        const src = `https://www.youtube.com/live_chat?v=${ch.name}&embed_domain=${PARENT_DOMAIN}`;
+        const videoId = getYouTubeStreamVideoId(ch);
+        if (!videoId) {
+          chatFrame.innerHTML = `<div class="youtube-offline-chat"><div class="offline-content"><div class="offline-text">Chat Is Offline</div></div></div>`;
+          return;
+        }
+        const src = `https://www.youtube.com/live_chat?v=${videoId}&embed_domain=${PARENT_DOMAIN}`;
         chatFrame.innerHTML = `
           <iframe 
             src="${src}" 
@@ -13086,11 +13141,14 @@ function renderMultiChatPanel() {
       let src = '';
       if (ch.platform === "twitch") src = `https://www.twitch.tv/embed/${ch.name}/chat?parent=${PARENT_DOMAIN}&darkpopout`;
       if (ch.platform === "kick") src = `https://chat.kick.cx/embed/${ch.name}`;
-      if (ch.platform === "youtube") src = `https://www.youtube.com/live_chat?v=${ch.name}&embed_domain=${PARENT_DOMAIN}`;
+      if (ch.platform === "youtube") {
+        const videoId = getYouTubeStreamVideoId(ch);
+        src = ch.live === false || !videoId ? '' : `https://www.youtube.com/live_chat?v=${videoId}&embed_domain=${PARENT_DOMAIN}`;
+      }
 
-      content = `
+      content = src ? `
         <iframe src="${src}" allow="autoplay; fullscreen" style="width:100%; height:100%; border:none;"></iframe>
-      `;
+      ` : `<div class="youtube-offline-chat"><div class="offline-content"><div class="offline-text">Chat Is Offline</div></div></div>`;
     }
 
     wrapper.innerHTML = `
@@ -16685,6 +16743,6 @@ if (channels.length > 0 && !activeChat) {
 applyLanguage(settings.language || 'en');
 
 </script>
-<script src="/backend-client.js?v=20260723.2"></script>
+<script src="/backend-client.js?v=20260723.3"></script>
 </body>
 </html>
