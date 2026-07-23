@@ -5680,6 +5680,8 @@ header {
       </button>
     </div>
     <p style="font-size: 14px; color: var(--text-muted); margin-bottom: 12px;">Copy this link to share your exact layout and streams.</p>
+    <label for="share-layout-name-input" style="display:block;margin-bottom:6px;font-size:12px;font-weight:700;">Layout name</label>
+    <input type="text" id="share-layout-name-input" maxlength="80" value="Shared Layout" oninput="refreshShareLayoutLink()" style="width:100%;margin-bottom:12px;">
     <div class="modal-input-group">
       <input type="text" id="share-link-input" readonly>
       <button onclick="copyShareLink()">Copy</button>
@@ -7430,10 +7432,21 @@ document.addEventListener('click', (e) => {
 function openShareModal() {
   document.getElementById('share-modal').classList.add('active');
   document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('active'));
-  
-  const names = channels.map(c => `${c.platform}:${c.name}`).join(',');
-  const link = `https://${PARENT_DOMAIN}/layout?streams=${encodeURIComponent(names)}&layout=${currentLayout}`;
-  document.getElementById('share-link-input').value = link;
+  const nameInput = document.getElementById('share-layout-name-input');
+  if (nameInput && !nameInput.value.trim()) nameInput.value = 'Shared Layout';
+  refreshShareLayoutLink();
+}
+function createLayoutShareLink(layoutChannels = channels, layout = currentLayout, name = 'Shared Layout') {
+  const url = new URL('/layout', window.location.origin);
+  url.searchParams.set('streams', (layoutChannels || []).map(channel => `${channel.platform}:${channel.name}`).join(','));
+  url.searchParams.set('layout', normalizeLayoutType(layout));
+  url.searchParams.set('name', String(name || 'Shared Layout').trim().slice(0, 80) || 'Shared Layout');
+  return url.toString();
+}
+function refreshShareLayoutLink() {
+  const name = document.getElementById('share-layout-name-input')?.value || 'Shared Layout';
+  const input = document.getElementById('share-link-input');
+  if (input) input.value = createLayoutShareLink(channels, currentLayout, name);
 }
 function closeShareModal(e, force = false) {
   if (force || e.target.id === 'share-modal') document.getElementById('share-modal').classList.remove('active');
@@ -9316,7 +9329,9 @@ function parseProfileLayoutLink(link) {
     if (!streams.length) return null;
     const requestedLayout = (url.searchParams.get('layout') || 'grid').toLowerCase();
     const layout = ['grid', 'vertical', 'horizontal'].includes(requestedLayout) ? requestedLayout : 'grid';
-    return { streams, layout };
+    const fallbackName = `${layout.charAt(0).toUpperCase()}${layout.slice(1)} Multistream Layout`;
+    const name = String(url.searchParams.get('name') || fallbackName).trim().slice(0, 80) || fallbackName;
+    return { streams, layout, name };
   } catch (error) {
     return null;
   }
@@ -12075,10 +12090,6 @@ function expandStreamById(id) {
 
 function setLayout(type, options = {}) {
   const normalizedType = normalizeLayoutType(type);
-  const enteringGrid = currentLayout !== 'grid' && normalizedType === 'grid';
-  if (enteringGrid) channels.forEach(channel => {
-    if (channel.platform === 'kick') channel.muted = true;
-  });
   currentLayout = normalizedType;
   document.querySelectorAll('.dropdown-menu').forEach(m => m.classList.remove('active'));
   document.getElementById('layout-picker-trigger')?.setAttribute('aria-expanded', 'false');
@@ -12086,12 +12097,6 @@ function setLayout(type, options = {}) {
     option.setAttribute('aria-pressed', String(option.dataset.layoutOption === normalizedType));
   });
   renderStreams();
-  if (enteringGrid) requestAnimationFrame(() => {
-    channels.filter(channel => channel.platform === 'kick').forEach(channel => {
-      const iframe = streamsEl.querySelector(`.stream-frame[data-id="${CSS.escape(channel.id)}"] iframe`);
-      if (iframe) iframe.src = `https://player.kick.com/${encodeURIComponent(channel.name)}?autoplay=true&muted=true`;
-    });
-  });
   if (!options.skipSave) saveState();
   if (!options.silent && settings.notificationsEnabled) showNotification(`Switched to ${normalizedType} layout`, 'layout');
   
@@ -13131,8 +13136,7 @@ function shareSavedLayout(idx) {
   const layout = savedLayouts[idx];
   if (!layout || !layout.channels.length) return;
 
-  const names = layout.channels.map(c => `${c.platform}:${c.name}`).join(',');
-  const link = `https://${PARENT_DOMAIN}/layout?streams=${encodeURIComponent(names)}&layout=${layout.layout}`;
+  const link = createLayoutShareLink(layout.channels, layout.layout, layout.name);
   
   // Store the link globally so social buttons can use it
   window.currentShareLink = link;
@@ -16680,6 +16684,6 @@ if (channels.length > 0 && !activeChat) {
 applyLanguage(settings.language || 'en');
 
 </script>
-<script src="/backend-client.js?v=20260723.1"></script>
+<script src="/backend-client.js?v=20260723.2"></script>
 </body>
 </html>
