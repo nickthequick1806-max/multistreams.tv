@@ -71,6 +71,50 @@ async function profileShell(request, env, url) {
   return securityHeaders(new Response(rewritten.body, { status: shell.ok ? 200 : shell.status, headers: rewritten.headers }));
 }
 
+function sharedLayoutDetails(url) {
+  const allowedPlatforms = new Set(['twitch', 'youtube', 'kick', 'rumble']);
+  const streams = String(url.searchParams.get('streams') || '').split(',').map(entry => {
+    const separator = entry.indexOf(':');
+    if (separator < 1) return null;
+    const platform = entry.slice(0, separator).toLowerCase();
+    const name = entry.slice(separator + 1).trim();
+    return allowedPlatforms.has(platform) && name ? { platform, name } : null;
+  }).filter(Boolean).slice(0, 24);
+  const requestedLayout = String(url.searchParams.get('layout') || 'grid').toLowerCase();
+  const layout = ['grid', 'vertical', 'horizontal'].includes(requestedLayout) ? requestedLayout : 'grid';
+  const fallbackName = `${layout.charAt(0).toUpperCase()}${layout.slice(1)} Multistream Layout`;
+  const name = String(url.searchParams.get('name') || fallbackName).trim().slice(0, 80) || fallbackName;
+  return { streams, layout, name };
+}
+
+async function layoutShell(request, env, url) {
+  const details = sharedLayoutDetails(url);
+  const layoutLabel = `${details.layout.charAt(0).toUpperCase()}${details.layout.slice(1)}`;
+  const streamLabel = details.streams.length === 1 ? 'stream' : 'streams';
+  const description = `${details.streams.length} ${streamLabel} | ${layoutLabel} layout on Multistreams.tv.`;
+  const canonical = new URL('/layout', url.origin);
+  canonical.searchParams.set('streams', details.streams.map(stream => `${stream.platform}:${stream.name}`).join(','));
+  canonical.searchParams.set('layout', details.layout);
+  canonical.searchParams.set('name', details.name);
+  const shellUrl = new URL('/multistreams.html', url.origin);
+  const shell = await env.ASSETS.fetch(new Request(shellUrl, { method: request.method, headers: request.headers }));
+  const image = 'https://i.postimg.cc/zXqp6fVh/og-image.png';
+  const rewritten = new HTMLRewriter()
+    .on('title', new ReplaceText(`${details.name} | Multistreams.tv`))
+    .on('meta[name="description"]', new ReplaceAttribute('content', description))
+    .on('link[rel="canonical"]', new ReplaceAttribute('href', canonical.toString()))
+    .on('meta[property="og:url"]', new ReplaceAttribute('content', canonical.toString()))
+    .on('meta[property="og:title"]', new ReplaceAttribute('content', details.name))
+    .on('meta[property="og:description"]', new ReplaceAttribute('content', description))
+    .on('meta[property="og:image"]', new ReplaceAttribute('content', image))
+    .on('meta[property="og:image:alt"]', new ReplaceAttribute('content', `${details.name} layout preview`))
+    .on('meta[name="twitter:title"]', new ReplaceAttribute('content', details.name))
+    .on('meta[name="twitter:description"]', new ReplaceAttribute('content', description))
+    .on('meta[name="twitter:image"]', new ReplaceAttribute('content', image))
+    .transform(shell);
+  return securityHeaders(new Response(rewritten.body, { status: shell.ok ? 200 : shell.status, headers: rewritten.headers }));
+}
+
 export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
@@ -81,6 +125,9 @@ export default {
     }
     if (/^\/profile\/[^/]+\/?$/.test(url.pathname) && ['GET', 'HEAD'].includes(request.method)) {
       return profileShell(request, env, url);
+    }
+    if (url.pathname === '/layout' && ['GET', 'HEAD'].includes(request.method)) {
+      return layoutShell(request, env, url);
     }
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     const requestId = request.headers.get('cf-ray') || randomId(10);

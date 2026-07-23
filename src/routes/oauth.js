@@ -32,6 +32,7 @@ function connectionPlatform(platform, purpose) {
 }
 
 function requestedScopes(platform, purpose) {
+  if (platform === 'google') return OAUTH.youtube.scopes;
   return connectionPlatform(platform, purpose) === 'youtube' ? OAUTH.youtube.scopes : OAUTH[platform].scopes;
 }
 
@@ -43,6 +44,13 @@ function clientCredentials(env, platform) {
 
 function callbackUrl(env, platform) {
   return `${new URL(env.APP_ORIGIN).origin}/api/oauth/${platform}/callback`;
+}
+
+function providerRedirectUrl(env, platform) {
+  if (platform === 'twitch') {
+    return String(env.TWITCH_REDIRECT_URI || `${new URL(env.APP_ORIGIN).origin}/multistreams`);
+  }
+  return callbackUrl(env, platform);
 }
 
 async function startOAuth(request, env, platform, url) {
@@ -58,14 +66,15 @@ async function startOAuth(request, env, platform, url) {
   if (!credentials.id || !credentials.secret) throw new HttpError(503, `${platform} OAuth is not configured.`, 'oauth_not_configured');
   const state = randomId(24);
   const verifier = randomId(48);
+  const redirectUri = providerRedirectUrl(env, platform);
   const redirectTo = safeRedirectPath(url.searchParams.get('returnTo'));
   const timestamp = nowIso();
   await env.DB.prepare(`INSERT INTO auth_challenges (id, user_id, type, verifier, redirect_to, metadata_json, created_at, expires_at)
     VALUES (?1, ?2, 'oauth', ?3, ?4, ?5, ?6, ?7)`)
-    .bind(state, session?.user_id || null, verifier, redirectTo, JSON.stringify({ platform, purpose }), timestamp, new Date(Date.now() + 10 * 60_000).toISOString()).run();
+    .bind(state, session?.user_id || null, verifier, redirectTo, JSON.stringify({ platform, purpose, redirectUri }), timestamp, new Date(Date.now() + 10 * 60_000).toISOString()).run();
   const params = new URLSearchParams({
     client_id: credentials.id,
-    redirect_uri: callbackUrl(env, platform),
+    redirect_uri: redirectUri,
     response_type: 'code',
     scope: requestedScopes(platform, purpose).join(' '),
     state,
@@ -81,7 +90,7 @@ async function startOAuth(request, env, platform, url) {
   return Response.redirect(`${config.authorize}?${params.toString()}`, 302);
 }
 
-async function exchangeCode(env, platform, code, verifier) {
+async function exchangeCode(env, platform, code, verifier, redirectUri) {
   const config = OAUTH[platform];
   const credentials = clientCredentials(env, platform);
   const body = new URLSearchParams({
@@ -89,7 +98,7 @@ async function exchangeCode(env, platform, code, verifier) {
     code,
     client_id: credentials.id,
     client_secret: credentials.secret,
-    redirect_uri: callbackUrl(env, platform),
+    redirect_uri: redirectUri || providerRedirectUrl(env, platform),
     code_verifier: verifier
   });
   const response = await fetch(config.token, { method: 'POST', headers: { 'content-type': 'application/x-www-form-urlencoded' }, body });
@@ -160,6 +169,22 @@ async function finishGoogleLogin(request, env, identity) {
   return { user, token: await createSession(request, env, user.id) };
 }
 
+async function saveConnection(env, userId, platform, identity, tokens, scopes) {
+  const timestamp = nowIso();
+  const expiresAt = tokens.expires_in ? new Date(Date.now() + Number(tokens.expires_in) * 1000).toISOString() : null;
+  await env.DB.prepare(`INSERT INTO oauth_connections
+    (id, user_id, platform, platform_user_id, platform_username, access_token, refresh_token, token_type, scopes, expires_at, metadata_json, created_at, updated_at)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
+    ON CONFLICT(user_id, platform) DO UPDATE SET platform_user_id = excluded.platform_user_id, platform_username = excluded.platform_username,
+      access_token = excluded.access_token,
+      refresh_token = CASE WHEN excluded.refresh_token != '' THEN excluded.refresh_token ELSE oauth_connections.refresh_token END,
+      token_type = excluded.token_type, scopes = excluded.scopes,
+      expires_at = excluded.expires_at, metadata_json = excluded.metadata_json, updated_at = excluded.updated_at`)
+    .bind(randomId(), userId, platform, identity.id, identity.username, await encrypt(tokens.access_token, env.TOKEN_ENCRYPTION_KEY),
+      tokens.refresh_token ? await encrypt(tokens.refresh_token, env.TOKEN_ENCRYPTION_KEY) : '', tokens.token_type || 'Bearer', tokens.scope || scopes.join(' '),
+      expiresAt, JSON.stringify({ avatarUrl: identity.avatarUrl || '', bannerUrl: identity.bannerUrl || '' }), timestamp).run();
+}
+
 async function finishOAuth(request, env, platform, url) {
   const error = url.searchParams.get('error');
   const state = String(url.searchParams.get('state') || '');
@@ -176,27 +201,23 @@ async function finishOAuth(request, env, platform, url) {
     destination.searchParams.set('status', 'cancelled');
     return Response.redirect(destination.toString(), 302);
   }
-  const tokens = await exchangeCode(env, platform, code, challenge.verifier);
+  const tokens = await exchangeCode(env, platform, code, challenge.verifier, metadata.redirectUri);
   const identity = await fetchIdentity(connectedPlatform, tokens.access_token, env);
   if (platform === 'google' && metadata.purpose === 'login') {
     const result = await finishGoogleLogin(request, env, identity);
+    try {
+      const youtubeIdentity = await fetchIdentity('youtube', tokens.access_token, env);
+      await saveConnection(env, result.user.id, 'youtube', youtubeIdentity, tokens, OAUTH.youtube.scopes);
+      destination.searchParams.set('oauth', 'youtube');
+      destination.searchParams.set('status', 'connected');
+    } catch (youtubeError) {
+      console.warn(JSON.stringify({ event: 'google_login_youtube_connection_unavailable', message: youtubeError.message || '' }));
+    }
     destination.searchParams.set('auth', 'success');
     return new Response(null, { status: 302, headers: { location: destination.toString(), 'set-cookie': sessionCookie(env, result.token) } });
   }
   if (!challenge.user_id) throw new HttpError(401, 'Sign in before connecting a platform.', 'authentication_required');
-  const timestamp = nowIso();
-  const expiresAt = tokens.expires_in ? new Date(Date.now() + Number(tokens.expires_in) * 1000).toISOString() : null;
-  await env.DB.prepare(`INSERT INTO oauth_connections
-    (id, user_id, platform, platform_user_id, platform_username, access_token, refresh_token, token_type, scopes, expires_at, metadata_json, created_at, updated_at)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
-    ON CONFLICT(user_id, platform) DO UPDATE SET platform_user_id = excluded.platform_user_id, platform_username = excluded.platform_username,
-      access_token = excluded.access_token,
-      refresh_token = CASE WHEN excluded.refresh_token != '' THEN excluded.refresh_token ELSE oauth_connections.refresh_token END,
-      token_type = excluded.token_type, scopes = excluded.scopes,
-      expires_at = excluded.expires_at, metadata_json = excluded.metadata_json, updated_at = excluded.updated_at`)
-    .bind(randomId(), challenge.user_id, connectedPlatform, identity.id, identity.username, await encrypt(tokens.access_token, env.TOKEN_ENCRYPTION_KEY),
-      tokens.refresh_token ? await encrypt(tokens.refresh_token, env.TOKEN_ENCRYPTION_KEY) : '', tokens.token_type || 'Bearer', tokens.scope || requestedScopes(platform, metadata.purpose).join(' '),
-      expiresAt, JSON.stringify({ avatarUrl: identity.avatarUrl || '', bannerUrl: identity.bannerUrl || '' }), timestamp).run();
+  await saveConnection(env, challenge.user_id, connectedPlatform, identity, tokens, requestedScopes(platform, metadata.purpose));
   destination.searchParams.set('oauth', connectedPlatform);
   destination.searchParams.set('status', 'connected');
   return Response.redirect(destination.toString(), 302);

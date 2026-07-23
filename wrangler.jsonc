@@ -11,7 +11,7 @@
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
-    "run_worker_first": ["/api/*", "/profile/*", "/*.html"]
+    "run_worker_first": ["/api/*", "/profile/*", "/layout", "/*.html"]
   },
   "d1_databases": [
     {
@@ -23,6 +23,7 @@
   ],
   "vars": {
     "APP_ORIGIN": "https://multistreams.tv",
+    "TWITCH_REDIRECT_URI": "https://multistreams.tv/multistreams",
     "SESSION_COOKIE": "ms_session",
     "GEMINI_BACKEND_URL": "https://html-viewer-secure-backend.nickthequick1806.workers.dev/api/ai/gemini",
     "GEMINI_BACKEND_ORIGIN": "https://htmlviewer.site",

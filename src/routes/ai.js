@@ -16,7 +16,22 @@ function mergeSystemInstruction(contents, instruction) {
   return cloned;
 }
 
-async function requestGemini(env, model, contents, systemInstruction, googleSearch) {
+function responseText(result) {
+  return result?.candidates?.[0]?.content?.parts
+    ?.filter(part => !part?.thought && typeof part?.text === 'string')
+    .map(part => part.text)
+    .join('\n')
+    .trim() || '';
+}
+
+function finishReason(result) {
+  return String(result?.candidates?.[0]?.finishReason || result?.promptFeedback?.blockReason || '');
+}
+
+async function requestGemini(env, model, contents, systemInstruction, googleSearch, recovery = false) {
+  const recoveryInstruction = recovery
+    ? '\n\nRecovery instruction: Do not emit or call any function. Return the requested result directly as valid JSON text.'
+    : '';
   if (env.GEMINI_BACKEND_URL) {
     const response = await fetch(env.GEMINI_BACKEND_URL, {
       method: 'POST',
@@ -26,7 +41,7 @@ async function requestGemini(env, model, contents, systemInstruction, googleSear
       },
       body: JSON.stringify({
         model,
-        contents: mergeSystemInstruction(contents, systemInstruction),
+        contents: mergeSystemInstruction(contents, `${systemInstruction || ''}${recoveryInstruction}`),
         googleSearch: googleSearch !== false
       })
     });
@@ -35,7 +50,7 @@ async function requestGemini(env, model, contents, systemInstruction, googleSear
   if (!env.GEMINI_API_KEY) throw new HttpError(503, 'AI Search is not configured.', 'ai_not_configured');
   const payload = {
     contents,
-    systemInstruction: { parts: [{ text: String(systemInstruction || '').slice(0, 24_000) }] },
+    systemInstruction: { parts: [{ text: `${String(systemInstruction || '').slice(0, 23_500)}${recoveryInstruction}` }] },
     generationConfig: { maxOutputTokens: 12_000, responseMimeType: 'application/json' }
   };
   if (googleSearch !== false) payload.tools = [{ googleSearch: {} }];
@@ -58,6 +73,14 @@ async function aiSearch(request, env) {
   if (response.status === 429) {
     model = MODELS[1].id;
     ({ response, result } = await requestGemini(env, model, contents, body.systemInstruction, body.googleSearch));
+  }
+  const malformed = ['MALFORMED_FUNCTION_CALL', 'MALFORMED_RESPONSE'].includes(finishReason(result));
+  if (response.ok && (!responseText(result) || malformed)) {
+    ({ response, result } = await requestGemini(env, model, contents, body.systemInstruction, false, true));
+    if (response.status === 429 && model === MODELS[0].id) {
+      model = MODELS[1].id;
+      ({ response, result } = await requestGemini(env, model, contents, body.systemInstruction, false, true));
+    }
   }
   if (!response.ok) {
     console.error(JSON.stringify({ event: 'gemini_api_error', status: response.status, code: result.error?.status || '', message: result.error?.message || '' }));

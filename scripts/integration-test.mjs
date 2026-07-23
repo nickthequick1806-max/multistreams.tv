@@ -73,6 +73,11 @@ await request('/api/state', { method: 'PUT', body: { channels: layoutChannels, l
 assert.equal((await request('/api/state')).state.layout, 'vertical');
 const saved = await request('/api/layouts', { method: 'POST', expected: 201, body: { name: 'Integration Layout', channels: layoutChannels, layout: 'vertical' } });
 assert.equal((await request('/api/layouts')).layouts[0].id, saved.layout.id);
+const sharedLayoutResponse = await fetch(`${base}/layout?streams=${encodeURIComponent('twitch:twitchdev,kick:xqc')}&layout=horizontal&name=${encodeURIComponent('Integration Share')}`);
+assert.equal(sharedLayoutResponse.status, 200);
+const sharedLayoutHtml = await sharedLayoutResponse.text();
+assert.match(sharedLayoutHtml, /<meta property="og:title" content="Integration Share">/);
+assert.match(sharedLayoutHtml, /2 streams \| Horizontal layout on Multistreams\.tv\./);
 
 const createdCommunity = await request('/api/community-layouts', { method: 'POST', expected: 201, body: { name: 'Integration Community Layout', channels: layoutChannels, layout: 'vertical' } });
 const community = await request(`/api/community-layouts?q=${encodeURIComponent(username)}`);
@@ -129,4 +134,4 @@ await request('/api/auth/account', { method: 'DELETE', body: { confirmation: use
 cookie = '';
 assert.equal((await request('/api/auth/session')).authenticated, false);
 
-console.log(JSON.stringify({ ok: true, checks: 44 - Number(skipExternalNotifications) - (skipRewards ? 7 : 0), user: username, rewards }));
+console.log(JSON.stringify({ ok: true, checks: 48 - Number(skipExternalNotifications) - (skipRewards ? 7 : 0), user: username, rewards }));

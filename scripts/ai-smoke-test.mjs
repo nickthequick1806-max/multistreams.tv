@@ -37,7 +37,17 @@ try {
   });
   assert.ok(['gemini-3.6-flash', 'gemini-3.5-flash-lite'].includes(result.model));
   assert.ok(result.response?.candidates?.[0]?.content?.parts?.some(part => typeof part.text === 'string' && part.text.length > 0));
-  console.log(JSON.stringify({ ok: true, model: result.model, responseReceived: true }));
+  const discovery = await request('/api/ai/search', {
+    method: 'POST',
+    body: {
+      contents: [{ role: 'user', parts: [{ text: 'Find ten top livestream creators and return the requested structured JSON without calling functions.' }] }],
+      systemInstruction: 'Return only valid JSON with title, answer, resultType, profiles, clips, quickFacts, comparison, and trendGraph fields.',
+      googleSearch: true
+    }
+  });
+  assert.ok(discovery.response?.candidates?.[0]?.content?.parts?.some(part => typeof part.text === 'string' && part.text.length > 0));
+  assert.notEqual(discovery.response?.candidates?.[0]?.finishReason, 'MALFORMED_FUNCTION_CALL');
+  console.log(JSON.stringify({ ok: true, model: result.model, responseReceived: true, structuredSearch: true }));
 } finally {
   if (cookie) await request('/api/auth/account', { method: 'DELETE', body: { confirmation: username } }).catch(() => {});
 }

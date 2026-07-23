@@ -86,7 +86,7 @@
       watchHours: (Number(profile.watchSeconds) || 0) / 3600,
       bio: profile.bio || '',
       socialLinks: profile.socials || {},
-      layouts: (profile.layouts || []).map(layout => ({ ...layout, link: layout.link || buildLayoutLink(layout.channels || [], layout.layout) })),
+      layouts: (profile.layouts || []).map(layout => ({ ...layout, link: layout.link || buildLayoutLink(layout.channels || [], layout.layout, layout.name) })),
       following: Boolean(profile.following),
       privacy: {
         visibility: profile.profileVisibility === 'hidden' ? 'hidden' : 'public',
@@ -99,9 +99,12 @@
     };
   }
 
-  function buildLayoutLink(layoutChannels, layout) {
-    const streams = (layoutChannels || []).map(channel => `${channel.platform}:${channel.name}`).join(',');
-    return `${location.origin}/multistreams?streams=${encodeURIComponent(streams)}&layout=${encodeURIComponent(layout || 'grid')}`;
+  function buildLayoutLink(layoutChannels, layout, name = 'Shared Layout') {
+    const url = new URL('/layout', location.origin);
+    url.searchParams.set('streams', (layoutChannels || []).map(channel => `${channel.platform}:${channel.name}`).join(','));
+    url.searchParams.set('layout', layout || 'grid');
+    url.searchParams.set('name', name || 'Shared Layout');
+    return url.toString();
   }
 
   function applySession(payload) {
@@ -316,6 +319,14 @@
 
   async function bootstrap() {
     try {
+      const oauthRelayParams = new URLSearchParams(location.search);
+      if (location.pathname === '/multistreams'
+        && oauthRelayParams.get('state')
+        && (oauthRelayParams.get('code') || oauthRelayParams.get('error'))
+        && !oauthRelayParams.get('oauth')) {
+        location.replace(`/api/oauth/twitch/callback?${oauthRelayParams.toString()}`);
+        return;
+      }
       localStorage.removeItem(ACCOUNT_STORAGE_KEY);
       localStorage.removeItem('saved_layouts');
       localStorage.removeItem('profile_shared_layouts');
@@ -344,7 +355,7 @@
       const params = new URLSearchParams(location.search);
       const sharedLayout = typeof parseProfileLayoutLink === 'function' ? parseProfileLayoutLink(location.href) : null;
       if (sharedLayout?.streams?.length) {
-        applyLoadedLayout({ name: 'Shared layout', streams: sharedLayout.streams, layout: sharedLayout.layout, source: 'Shared link' });
+        applyLoadedLayout({ name: sharedLayout.name || 'Shared Layout', streams: sharedLayout.streams, layout: sharedLayout.layout, source: 'Shared link' });
       }
       if (params.get('status') === 'connected') showNotification(`${params.get('oauth') || 'Platform'} connected successfully`, 'saved', { position: 'bottom-right' });
       if (params.get('auth') === 'success') showNotification('Signed in successfully', 'saved', { position: 'bottom-right' });

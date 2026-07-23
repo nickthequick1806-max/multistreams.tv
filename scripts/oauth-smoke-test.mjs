@@ -39,12 +39,15 @@ try {
 
   const twitch = await oauthLocation('/api/oauth/twitch/start?returnTo=/multistreams');
   assert.equal(twitch.hostname, 'id.twitch.tv');
-  assert.equal(twitch.searchParams.get('redirect_uri'), 'https://multistreams.tv/api/oauth/twitch/callback');
+  assert.equal(twitch.searchParams.get('redirect_uri'), 'https://multistreams.tv/multistreams');
   assert.match(twitch.searchParams.get('scope') || '', /user:read:follows/);
   assert.equal(twitch.searchParams.get('force_verify'), 'true');
   assert.equal(twitch.searchParams.get('code_challenge_method'), 'S256');
 
-  for (const providerUrl of [youtube, twitch]) {
+  const googleLogin = await oauthLocation('/api/oauth/google/start?purpose=login&returnTo=/multistreams');
+  assert.match(googleLogin.searchParams.get('scope') || '', /youtube\.readonly/);
+
+  for (const providerUrl of [youtube, twitch, googleLogin]) {
     const response = await fetch(providerUrl, { redirect: 'manual' });
     assert.ok([200, 302, 303].includes(response.status), `${providerUrl.hostname} rejected the authorization request with ${response.status}`);
     assert.doesNotMatch(response.headers.get('location') || '', /redirect_uri_mismatch|invalid_client/i);
