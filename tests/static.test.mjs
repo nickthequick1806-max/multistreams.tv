@@ -57,7 +57,7 @@ test('production UI fixes remain wired to backend-normalized data', () => {
   assert.match(backendClient, /\/api\/security\/devices\/\$\{encodeURIComponent\(deviceId\)\}/);
 });
 
-test('OAuth, AI recovery, official YouTube data, and share routes have regressions covered', () => {
+test('OAuth, AI recovery, YouTube data fallbacks, and share routes have regressions covered', () => {
   assert.match(wrangler, /"TWITCH_REDIRECT_URI":\s*"https:\/\/multistreams\.tv\/multistreams"/);
   assert.match(backendClient, /\/api\/oauth\/twitch\/callback\?\$\{oauthRelayParams\.toString\(\)\}/);
   assert.match(aiRoute, /MALFORMED_FUNCTION_CALL/);
@@ -65,7 +65,7 @@ test('OAuth, AI recovery, official YouTube data, and share routes have regressio
   assert.match(platforms, /\/activities\?part=snippet,contentDetails&home=true&maxResults=50/);
   assert.doesNotMatch(platforms, /slice\.map\(channelId => youtubeSearchVideos/);
   assert.match(platforms, /forHandle=/);
-  assert.doesNotMatch(platforms, /\/v1\/youtube\//);
+  assert.match(platforms, /if \(live && error\?\.code === 'youtube_rate_limited' && env\.SCRAPECREATORS_API_KEY\)/);
   assert.match(platforms, /\/search\?part=snippet&type=channel/);
   assert.match(thirdPartyRoute, /\/v1\/youtube\/shorts\/trending/);
   assert.match(thirdPartyRoute, /\/v1\/rumble\//);
@@ -78,5 +78,18 @@ test('OAuth, AI recovery, official YouTube data, and share routes have regressio
   assert.match(html, /async function hydrateLoadedLayoutChannels/);
   assert.match(html, /channels = await hydrateLoadedLayoutChannels\(streams\)/);
   assert.match(backendClient, /if \(!incomingSharedLayout\?\.streams\?\.length\) jobs\.push\(loadRemoteState\(\)\)/);
+  assert.match(html, /-webkit-line-clamp:\s*2/);
+  assert.match(html, /notificationsMarkedAsRead = false/);
+  assert.match(html, /clip\.duration \? `<span class="browse-duration">/);
+  assert.match(backendClient, /function browseMediaDuration\(item\)/);
+  assert.match(backendClient, /card\.style\.position = 'fixed'/);
+  assert.doesNotMatch(platforms, /sharedPublicLiveIndex/);
+  assert.match(platforms, /if \(categoryId\) params\.set\('videoCategoryId', categoryId\)/);
+  assert.match(platforms, /recordedDurationSeconds/);
+  assert.match(platforms, /async function youtubeCreatorLiveFallback/);
+  assert.match(platforms, /async function youtubeCreatorChannelDetail/);
+  assert.match(platforms, /categoryName \? `\$\{categoryName\} live`/);
+  assert.match(platforms, /const streams = requestedVideo\s*\?\s*\(requestedVideo\.live \? \[requestedVideo\] : \[\]\)/);
+  assert.match(platforms, /SCRAPECREATORS_API_KEY && error\?\.code === 'youtube_rate_limited'/);
   assert.doesNotMatch(html, /enteringGrid[\s\S]{0,500}player\.kick\.com/);
 });

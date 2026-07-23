@@ -78,7 +78,7 @@ async function kickApi(env, path, accessToken) {
 }
 
 async function youtubeApi(env, path, accessToken) {
-  const publicCacheKey = accessToken ? '' : `youtube:response:v4:${path}`;
+  const publicCacheKey = accessToken ? '' : `youtube:response:v5:${path}`;
   let stale = null;
   if (publicCacheKey) {
     const cached = await cacheGet(env, publicCacheKey);
@@ -99,7 +99,8 @@ async function youtubeApi(env, path, accessToken) {
       if (publicCacheKey) {
         const isSearch = path.startsWith('/search?');
         const isLiveSearch = isSearch && /(?:^|[?&])eventType=live(?:&|$)/.test(path);
-        const ttl = isLiveSearch ? 1800 : isSearch ? 1800 : path.startsWith('/videoCategories?') ? 86400 : 900;
+        const isScopedLiveSearch = isLiveSearch && /(?:^|[?&])(?:q|channelId|videoCategoryId)=/.test(path);
+        const ttl = isLiveSearch ? (isScopedLiveSearch ? 180 : 600) : isSearch ? 1800 : path.startsWith('/videoCategories?') ? 86400 : 900;
         await cachePut(env, publicCacheKey, payload, ttl);
       }
       return payload;
@@ -271,6 +272,10 @@ async function youtubeChannelUploads(env, channelId, limit = 24, accessToken) {
 function normalizeYoutubeVideo(video, channel, categoryNames = new Map()) {
   const liveDetails = video.liveStreamingDetails || {};
   const isLive = Boolean(liveDetails.actualStartTime && !liveDetails.actualEndTime);
+  const durationMatch = String(video.contentDetails?.duration || '').match(/^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+  const recordedDurationSeconds = durationMatch
+    ? Number(durationMatch[1] || 0) * 86400 + Number(durationMatch[2] || 0) * 3600 + Number(durationMatch[3] || 0) * 60 + Number(durationMatch[4] || 0)
+    : 0;
   return {
     id: video.id,
     channelId: video.snippet?.channelId || '',
@@ -284,7 +289,9 @@ function normalizeYoutubeVideo(video, channel, categoryNames = new Map()) {
     viewerCountAvailable: liveDetails.concurrentViewers !== null && liveDetails.concurrentViewers !== undefined && liveDetails.concurrentViewers !== '',
     views: Number(video.statistics?.viewCount || 0),
     startedAt: liveDetails.actualStartTime || video.snippet?.publishedAt || '',
-    durationSeconds: liveDetails.actualStartTime ? Math.floor((Date.now() - new Date(liveDetails.actualStartTime).getTime()) / 1000) : 0,
+    durationSeconds: liveDetails.actualStartTime
+      ? Math.max(0, Math.floor((Date.now() - new Date(liveDetails.actualStartTime).getTime()) / 1000))
+      : recordedDurationSeconds,
     tags: video.snippet?.tags?.slice(0, 5) || [],
     thumbnail: video.snippet?.thumbnails?.high?.url || video.snippet?.thumbnails?.medium?.url || '',
     avatar: channel?.snippet?.thumbnails?.high?.url || channel?.snippet?.thumbnails?.default?.url || '',
@@ -296,18 +303,185 @@ function normalizeYoutubeVideo(video, channel, categoryNames = new Map()) {
   };
 }
 
+const YOUTUBE_CATEGORY_NAMES = new Map([
+  ['1', 'Film & Animation'],
+  ['2', 'Autos & Vehicles'],
+  ['10', 'Music'],
+  ['15', 'Pets & Animals'],
+  ['17', 'Sports'],
+  ['19', 'Travel & Events'],
+  ['20', 'Gaming'],
+  ['22', 'People & Blogs'],
+  ['23', 'Comedy'],
+  ['24', 'Entertainment'],
+  ['25', 'News & Politics'],
+  ['26', 'Howto & Style'],
+  ['27', 'Education'],
+  ['28', 'Science & Technology'],
+  ['29', 'Nonprofits & Activism']
+]);
+
+function creatorNumber(value, text = '') {
+  const direct = Number(value);
+  const match = String(text || '').replace(/,/g, '').match(/([\d.]+)\s*([KMB])?/i);
+  if (!match) return Number.isFinite(direct) ? direct : null;
+  const scale = { K: 1_000, M: 1_000_000, B: 1_000_000_000 }[String(match[2] || '').toUpperCase()] || 1;
+  return Math.round(Number(match[1]) * scale);
+}
+
+function normalizeCreatorYoutubeLive(item, options = {}) {
+  const channel = item.channel || {};
+  const id = String(item.id || item.videoId || '');
+  const channelId = String(channel.id || item.channelId || options.channelId || '');
+  const category = options.categoryId ? YOUTUBE_CATEGORY_NAMES.get(String(options.categoryId)) || 'YouTube Live' : 'YouTube Live';
+  const viewers = creatorNumber(
+    item.concurrentViewers ?? item.concurrentViewersInt ?? item.viewCountInt,
+    item.concurrentViewersText || item.viewCountText
+  );
+  const channelHandle = String(channel.handle || channel.title || channelId).replace(/^@/, '');
+  return {
+    id,
+    channelId,
+    platform: 'youtube',
+    name: channel.title || options.channelName || item.channelTitle || 'YouTube',
+    username: channelHandle.startsWith('channel/') ? channelId : channelHandle,
+    title: item.title || 'YouTube livestream',
+    category,
+    categoryId: String(options.categoryId || ''),
+    viewers,
+    viewerCountAvailable: viewers !== null,
+    views: 0,
+    startedAt: item.actualStartTime || item.startedAt || '',
+    durationSeconds: 0,
+    tags: [],
+    thumbnail: item.thumbnail || item.thumbnailUrl || '',
+    avatar: channel.thumbnail || channel.avatar || options.avatar || '',
+    banner: options.banner || '',
+    url: item.url || `https://www.youtube.com/watch?v=${encodeURIComponent(id)}`,
+    embedUrl: `https://www.youtube.com/embed/${encodeURIComponent(id)}?autoplay=1`,
+    live: true,
+    createdAt: ''
+  };
+}
+
+async function youtubeCreatorLiveFallback(env, { limit = 24, query = '', categoryId = '', channelId = '', channelName = '' } = {}) {
+  const cacheKey = `creator:youtube:live:v2:${limit}:${categoryId}:${channelId}:${query.toLowerCase()}`;
+  const cached = await cacheGet(env, cacheKey);
+  if (cached) return cached;
+  const categoryName = categoryId ? YOUTUBE_CATEGORY_NAMES.get(String(categoryId)) || '' : '';
+  const searchQuery = query || (categoryName ? `${categoryName} live` : '') || channelName || 'live now';
+  const payload = channelId
+    ? await creatorSearch(env, `/v1/youtube/channel/lives?channelId=${encodeURIComponent(channelId)}`)
+    : await creatorSearch(env, `/v1/youtube/search?query=${encodeURIComponent(searchQuery)}&sortBy=popular`);
+  const candidates = [
+    ...(payload.lives || []),
+    ...(payload.videos || []).filter(item => item.type === 'live' || item.lengthText === 'LIVE' || (item.badges || []).some(badge => /\blive\b/i.test(String(badge?.text || badge))))
+  ];
+  const unique = new Map();
+  for (const item of candidates) {
+    const normalized = normalizeCreatorYoutubeLive(item, { categoryId, channelId, channelName });
+    if (!normalized.id) continue;
+    if (channelId && normalized.channelId && normalized.channelId !== channelId) continue;
+    if (!unique.has(normalized.id)) unique.set(normalized.id, normalized);
+  }
+  const results = [...unique.values()]
+    .sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0))
+    .slice(0, limit);
+  if (!results.length) {
+    throw new HttpError(429, 'YouTube live results are temporarily unavailable. Please try again shortly.', 'youtube_rate_limited', {
+      source: 'creator_live_fallback',
+      candidateCount: candidates.length,
+      responseFields: Object.keys(payload).slice(0, 12)
+    });
+  }
+  return cachePut(env, cacheKey, results, 90);
+}
+
+async function youtubeCreatorChannelDetail(env, identifier) {
+  const normalized = String(identifier || '').trim().replace(/^@/, '');
+  if (/^[A-Za-z0-9_-]{11}$/.test(normalized)) {
+    const payload = await creatorSearch(env, `/v1/youtube/video?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${normalized}`)}`);
+    const channel = payload.channel || {};
+    const live = payload.durationMs === null && /^Started streaming\b/i.test(String(payload.publishDateText || ''));
+    const requestedVideo = {
+      ...normalizeCreatorYoutubeLive({ ...payload, id: normalized, channel }, { channelId: channel.id, channelName: channel.title, avatar: channel.thumbnail }),
+      live,
+      viewers: null,
+      viewerCountAvailable: false,
+      durationSeconds: live ? 0 : Math.max(0, Math.floor(Number(payload.durationMs || 0) / 1000)),
+      category: payload.genre || 'YouTube',
+      categoryId: '',
+      views: Number(payload.viewCountInt || 0),
+      createdAt: payload.publishDate || '',
+      startedAt: ''
+    };
+    const stream = live ? requestedVideo : null;
+    return {
+      platform: 'youtube',
+      id: channel.id || requestedVideo.channelId,
+      username: String(channel.handle || channel.id || '').replace(/^@/, ''),
+      name: channel.title || requestedVideo.name,
+      description: payload.description || '',
+      avatar: channel.thumbnail || '',
+      banner: '',
+      followers: null,
+      live,
+      stream,
+      requestedVideo,
+      category: requestedVideo.category,
+      title: requestedVideo.title,
+      viewers: 0,
+      url: requestedVideo.url,
+      socials: [{ platform: 'youtube', url: channel.id ? `https://www.youtube.com/channel/${channel.id}` : requestedVideo.url }]
+    };
+  }
+
+  const lookupPath = /^UC[A-Za-z0-9_-]{20,}$/.test(normalized)
+    ? `/v1/youtube/channel?channelId=${encodeURIComponent(normalized)}`
+    : `/v1/youtube/channel?url=${encodeURIComponent(`https://www.youtube.com/@${normalized}`)}`;
+  const channel = await creatorSearch(env, lookupPath);
+  const channelId = String(channel.channelId || channel.id || '');
+  if (!channelId) throw new HttpError(404, 'YouTube channel not found.', 'channel_not_found');
+  let streams = [];
+  try {
+    streams = await youtubeCreatorLiveFallback(env, { limit: 10, channelId, channelName: channel.name || channel.channel, query: channel.name || normalized });
+  } catch {}
+  const stream = streams[0] || null;
+  const username = String(channel.handle || channel.name || channelId).replace(/^@/, '');
+  return {
+    platform: 'youtube',
+    id: channelId,
+    username,
+    name: channel.name || channel.channel || username,
+    description: channel.description || '',
+    avatar: channel.avatar || '',
+    banner: channel.banner || '',
+    followers: creatorNumber(channel.subscriberCount, channel.subscriberCountText),
+    live: Boolean(stream),
+    stream,
+    requestedVideo: null,
+    category: stream?.category || '',
+    title: stream?.title || '',
+    viewers: stream?.viewers || 0,
+    url: `https://www.youtube.com/channel/${encodeURIComponent(channelId)}`,
+    socials: [{ platform: 'youtube', url: `https://www.youtube.com/channel/${encodeURIComponent(channelId)}` }]
+  };
+}
+
 async function youtubeSearchVideos(env, { limit = 24, query = '', live = false, categoryId = '', channelId = '', accessToken } = {}) {
-  const sharedPublicLiveIndex = live && !accessToken;
-  const params = new URLSearchParams({ part: 'snippet', type: 'video', maxResults: String(sharedPublicLiveIndex ? 50 : Math.min(50, limit)), order: 'viewCount', videoEmbeddable: 'true', safeSearch: 'moderate' });
-  if (query && !sharedPublicLiveIndex) params.set('q', query);
+  const params = new URLSearchParams({ part: 'snippet', type: 'video', maxResults: String(Math.min(50, limit)), order: 'viewCount', videoEmbeddable: 'true', safeSearch: 'moderate' });
+  if (query) params.set('q', query);
   if (live) params.set('eventType', 'live');
   else params.set('publishedAfter', new Date(Date.now() - 30 * 86400_000).toISOString());
-  if (categoryId && !sharedPublicLiveIndex) params.set('videoCategoryId', categoryId);
-  if (channelId && !sharedPublicLiveIndex) params.set('channelId', channelId);
+  if (categoryId) params.set('videoCategoryId', categoryId);
+  if (channelId) params.set('channelId', channelId);
   let search;
   try {
     search = await youtubeApi(env, `/search?${params}`, accessToken);
   } catch (error) {
+    if (live && error?.code === 'youtube_rate_limited' && env.SCRAPECREATORS_API_KEY) {
+      return youtubeCreatorLiveFallback(env, { limit, query, categoryId, channelId });
+    }
     if (accessToken || error?.code !== 'youtube_rate_limited') throw error;
     if (channelId && !live) return (await youtubeChannelUploads(env, channelId, limit)).slice(0, limit);
     if (!live) {
@@ -323,7 +497,7 @@ async function youtubeSearchVideos(env, { limit = 24, query = '', live = false, 
     }
     search = await cacheFindLatest(
       env,
-      'youtube:response:v4:/search?',
+      'youtube:response:v5:/search?',
       ['type=video', 'eventType=live'],
       ['&q=', 'channelId=', 'videoCategoryId='],
       86400
@@ -366,8 +540,13 @@ async function youtubeMostPopular(env, limit = 24) {
 }
 
 async function youtubeCategories(env, limit = 30, query = '') {
-  const categoriesPayload = await youtubeApi(env, '/videoCategories?part=snippet&regionCode=US');
-  let categories = (categoriesPayload.items || []).filter(item => item.snippet?.assignable);
+  let categories;
+  try {
+    const categoriesPayload = await youtubeApi(env, '/videoCategories?part=snippet&regionCode=US');
+    categories = (categoriesPayload.items || []).filter(item => item.snippet?.assignable);
+  } catch {
+    categories = [...YOUTUBE_CATEGORY_NAMES].map(([id, name]) => ({ id, snippet: { title: name, assignable: true } }));
+  }
   if (query) categories = categories.filter(item => item.snippet?.title?.toLowerCase().includes(query.toLowerCase()));
   let live = [];
   try { live = await youtubeSearchVideos(env, { limit: 50, live: true }); } catch {}
@@ -451,29 +630,36 @@ async function channelDetail(env, platform, identifier, options = {}) {
     return { platform, id: user.id, username: user.login, name: user.display_name, description: user.description || '', avatar: user.profile_image_url || '', banner: user.offline_image_url || '', followers: null, live: Boolean(stream), stream, category: stream?.category || channel.game_name || '', title: stream?.title || channel.title || '', viewers: stream?.viewers || 0, url: `https://www.twitch.tv/${encodeURIComponent(user.login)}`, socials: [{ platform: 'twitch', url: `https://www.twitch.tv/${encodeURIComponent(user.login)}` }] };
   }
   if (platform === 'youtube') {
-    let channel;
-    let requestedVideo = null;
-    if (/^[A-Za-z0-9_-]{11}$/.test(normalized)) {
-      const video = (await youtubeVideoDetails(env, [normalized]))[0];
-      if (!video) throw new HttpError(404, 'YouTube video not found.', 'video_not_found');
-      channel = (await youtubeChannels(env, [video.snippet?.channelId].filter(Boolean)))[0];
-      requestedVideo = normalizeYoutubeVideo(video, channel);
-    } else if (/^UC[A-Za-z0-9_-]{20,}$/.test(normalized)) channel = (await youtubeChannels(env, [normalized]))[0];
-    else {
-      const handlePayload = await youtubeApi(env, `/channels?part=snippet,statistics,brandingSettings&forHandle=${encodeURIComponent(normalized)}`);
-      channel = handlePayload.items?.[0] || null;
-      if (!channel) {
-        const search = await youtubeApi(env, `/search?part=snippet&type=channel&maxResults=1&q=${encodeURIComponent(normalized)}`);
-        const id = search.items?.[0]?.id?.channelId;
-        channel = id ? (await youtubeChannels(env, [id]))[0] : null;
+    try {
+      let channel;
+      let requestedVideo = null;
+      if (/^[A-Za-z0-9_-]{11}$/.test(normalized)) {
+        const video = (await youtubeVideoDetails(env, [normalized]))[0];
+        if (!video) throw new HttpError(404, 'YouTube video not found.', 'video_not_found');
+        channel = (await youtubeChannels(env, [video.snippet?.channelId].filter(Boolean)))[0];
+        requestedVideo = normalizeYoutubeVideo(video, channel);
+      } else if (/^UC[A-Za-z0-9_-]{20,}$/.test(normalized)) channel = (await youtubeChannels(env, [normalized]))[0];
+      else {
+        const handlePayload = await youtubeApi(env, `/channels?part=snippet,statistics,brandingSettings&forHandle=${encodeURIComponent(normalized)}`);
+        channel = handlePayload.items?.[0] || null;
+        if (!channel) {
+          const search = await youtubeApi(env, `/search?part=snippet&type=channel&maxResults=1&q=${encodeURIComponent(normalized)}`);
+          const id = search.items?.[0]?.id?.channelId;
+          channel = id ? (await youtubeChannels(env, [id]))[0] : null;
+        }
       }
+      if (!channel) throw new HttpError(404, 'YouTube channel not found.', 'channel_not_found');
+      const streams = requestedVideo
+        ? (requestedVideo.live ? [requestedVideo] : [])
+        : options.skipLiveSearch
+          ? []
+          : await youtubeSearchVideos(env, { limit: 1, live: true, channelId: channel.id });
+      const stream = streams[0] || null;
+      return { platform, id: channel.id, username: channel.snippet?.customUrl || channel.id, name: channel.snippet?.title || '', description: channel.snippet?.description || '', avatar: channel.snippet?.thumbnails?.high?.url || '', banner: channel.brandingSettings?.image?.bannerExternalUrl || '', followers: Number(channel.statistics?.subscriberCount || 0), live: Boolean(stream), stream, requestedVideo, category: stream?.category || requestedVideo?.category || '', title: stream?.title || requestedVideo?.title || '', viewers: stream?.viewers || 0, url: requestedVideo?.url || `https://www.youtube.com/channel/${channel.id}`, socials: [{ platform: 'youtube', url: `https://www.youtube.com/channel/${channel.id}` }] };
+    } catch (error) {
+      if (env.SCRAPECREATORS_API_KEY && error?.code === 'youtube_rate_limited') return youtubeCreatorChannelDetail(env, normalized);
+      throw error;
     }
-    if (!channel) throw new HttpError(404, 'YouTube channel not found.', 'channel_not_found');
-    const streams = requestedVideo?.live || options.skipLiveSearch
-      ? (requestedVideo?.live ? [requestedVideo] : [])
-      : await youtubeSearchVideos(env, { limit: 1, live: true, channelId: channel.id });
-    const stream = streams[0] || null;
-    return { platform, id: channel.id, username: channel.snippet?.customUrl || channel.id, name: channel.snippet?.title || '', description: channel.snippet?.description || '', avatar: channel.snippet?.thumbnails?.high?.url || '', banner: channel.brandingSettings?.image?.bannerExternalUrl || '', followers: Number(channel.statistics?.subscriberCount || 0), live: Boolean(stream), stream, requestedVideo, category: stream?.category || requestedVideo?.category || '', title: stream?.title || requestedVideo?.title || '', viewers: stream?.viewers || 0, url: requestedVideo?.url || `https://www.youtube.com/channel/${channel.id}`, socials: [{ platform: 'youtube', url: `https://www.youtube.com/channel/${channel.id}` }] };
   }
   if (platform === 'kick') {
     const params = new URLSearchParams(); params.append('slug', normalized);
@@ -590,7 +776,7 @@ export async function browse(env, platform, view, options = {}) {
   const categoryId = String(options.categoryId || '').trim();
   const channelId = String(options.channelId || '').trim();
   const chart = String(options.chart || '').trim();
-  const cacheKey = `browse:v5:${platform}:${view}:${limit}:${categoryId}:${channelId}:${chart}:${query.toLowerCase()}`;
+  const cacheKey = `browse:v6:${platform}:${view}:${limit}:${categoryId}:${channelId}:${chart}:${query.toLowerCase()}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   let items;
@@ -674,6 +860,46 @@ async function searchYoutubeChannels(env, query, limit) {
     const search = await youtubeApi(env, `/search?part=snippet&type=channel&maxResults=${limit}&q=${encodeURIComponent(query)}`);
     searchItems = search.items || [];
   } catch (error) {
+    if (error?.code === 'youtube_rate_limited' && env.SCRAPECREATORS_API_KEY) {
+      const payload = await creatorSearch(env, `/v1/youtube/search?query=${encodeURIComponent(query)}&sortBy=popular`);
+      const liveItems = (payload.lives || []).map(item => normalizeCreatorYoutubeLive(item));
+      const channels = new Map();
+      for (const item of payload.channels || []) {
+        const id = String(item.id || item.channelId || '');
+        if (!id) continue;
+        channels.set(id, {
+          platform: 'youtube',
+          id,
+          name: item.channelName || item.title || item.name || id,
+          username: String(item.handle || id).replace(/^@/, ''),
+          avatar: item.thumbnail || item.avatar || '',
+          banner: '',
+          live: false,
+          category: '',
+          viewers: null,
+          viewerCountAvailable: false,
+          url: `https://www.youtube.com/channel/${encodeURIComponent(id)}`
+        });
+      }
+      for (const live of liveItems) {
+        const current = channels.get(live.channelId);
+        channels.set(live.channelId || live.id, {
+          ...(current || {}),
+          platform: 'youtube',
+          id: live.channelId || live.id,
+          name: live.name,
+          username: live.channelId || live.username,
+          avatar: live.avatar,
+          banner: '',
+          live: true,
+          category: live.category,
+          viewers: live.viewers,
+          viewerCountAvailable: live.viewerCountAvailable,
+          url: live.channelId ? `https://www.youtube.com/channel/${encodeURIComponent(live.channelId)}` : live.url
+        });
+      }
+      return [...channels.values()].slice(0, limit);
+    }
     if (!exact || error?.code !== 'youtube_rate_limited') throw error;
   }
   if (exact && !searchItems.some(item => item.id?.channelId === exact.id)) {
