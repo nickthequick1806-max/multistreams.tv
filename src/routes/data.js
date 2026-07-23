@@ -90,6 +90,14 @@ async function createCommunityLayout(request, env, context) {
   return json({ ok: true, id }, { status: 201 });
 }
 
+async function deleteCommunityLayout(request, env, id) {
+  const session = await requireSession(request, env);
+  const result = await env.DB.prepare('DELETE FROM community_layouts WHERE id = ?1 AND user_id = ?2')
+    .bind(id, session.user_id).run();
+  if (!result.meta?.changes) throw new HttpError(404, 'That shared layout was not found.', 'layout_not_found');
+  return json({ ok: true, id });
+}
+
 async function getSettings(request, env) {
   const session = await requireSession(request, env);
   const row = await env.DB.prepare('SELECT settings_json FROM user_settings WHERE user_id = ?1').bind(session.user_id).first();
@@ -156,6 +164,8 @@ export async function handleDataRoute(request, env, url, context) {
   if (savedMatch && request.method === 'DELETE') return deleteSavedLayout(request, env, savedMatch[1]);
   if (url.pathname === '/api/community-layouts' && request.method === 'GET') return listCommunityLayouts(request, env, url);
   if (url.pathname === '/api/community-layouts' && request.method === 'POST') return createCommunityLayout(request, env, context);
+  const communityMatch = url.pathname.match(/^\/api\/community-layouts\/([^/]+)$/);
+  if (communityMatch && request.method === 'DELETE') return deleteCommunityLayout(request, env, communityMatch[1]);
   if (url.pathname === '/api/settings' && request.method === 'GET') return getSettings(request, env);
   if (url.pathname === '/api/settings' && request.method === 'PUT') return putSettings(request, env);
   if (url.pathname === '/api/feedback' && request.method === 'POST') return submitFeedback(request, env, context);

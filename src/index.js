@@ -22,6 +22,55 @@ function securityHeaders(response) {
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
 }
 
+class ReplaceAttribute {
+  constructor(name, value) {
+    this.name = name;
+    this.value = value;
+  }
+  element(element) {
+    element.setAttribute(this.name, this.value);
+  }
+}
+
+class ReplaceText {
+  constructor(value) {
+    this.value = value;
+  }
+  element(element) {
+    element.setInnerContent(this.value);
+  }
+}
+
+async function profileShell(request, env, url) {
+  const username = decodeURIComponent(url.pathname.match(/^\/profile\/([^/]+)\/?$/)?.[1] || '');
+  const profile = await env.DB.prepare(`SELECT username, banner_url, bio, profile_visibility FROM users
+    WHERE username = ?1 COLLATE NOCASE`).bind(username).first();
+  const visible = profile?.profile_visibility !== 'hidden';
+  const displayName = profile?.username || username;
+  const defaultDescription = 'Watch Twitch, Kick, YouTube and Rumble streams side by side in a clean multiview layout.';
+  const description = visible && String(profile?.bio || '').trim() ? String(profile.bio).trim().slice(0, 300) : defaultDescription;
+  const bannerValue = visible && profile?.banner_url ? profile.banner_url : 'https://i.postimg.cc/zXqp6fVh/og-image.png';
+  const banner = new URL(bannerValue, url.origin).toString();
+  const title = `${displayName} | Multistreams.tv`;
+  const profileUrl = `${url.origin}/profile/${encodeURIComponent(displayName)}`;
+  const shellUrl = new URL('/multistreams.html', url.origin);
+  const shell = await env.ASSETS.fetch(new Request(shellUrl, { method: request.method, headers: request.headers }));
+  const rewritten = new HTMLRewriter()
+    .on('title', new ReplaceText(title))
+    .on('meta[name="description"]', new ReplaceAttribute('content', description))
+    .on('link[rel="canonical"]', new ReplaceAttribute('href', profileUrl))
+    .on('meta[property="og:url"]', new ReplaceAttribute('content', profileUrl))
+    .on('meta[property="og:title"]', new ReplaceAttribute('content', title))
+    .on('meta[property="og:description"]', new ReplaceAttribute('content', description))
+    .on('meta[property="og:image"]', new ReplaceAttribute('content', banner))
+    .on('meta[property="og:image:alt"]', new ReplaceAttribute('content', `${displayName}'s Multistreams.tv profile banner`))
+    .on('meta[name="twitter:title"]', new ReplaceAttribute('content', title))
+    .on('meta[name="twitter:description"]', new ReplaceAttribute('content', description))
+    .on('meta[name="twitter:image"]', new ReplaceAttribute('content', banner))
+    .transform(shell);
+  return securityHeaders(new Response(rewritten.body, { status: shell.ok ? 200 : shell.status, headers: rewritten.headers }));
+}
+
 export default {
   async fetch(request, env, context) {
     const url = new URL(request.url);
@@ -31,13 +80,7 @@ export default {
       return Response.redirect(url.toString(), 308);
     }
     if (/^\/profile\/[^/]+\/?$/.test(url.pathname) && ['GET', 'HEAD'].includes(request.method)) {
-      const shellUrl = new URL('/multistreams.html', url.origin);
-      const shellRequest = new Request(shellUrl, { method: request.method, headers: request.headers });
-      const shell = await env.ASSETS.fetch(shellRequest);
-      return securityHeaders(new Response(shell.body, {
-        status: shell.ok ? 200 : shell.status,
-        headers: shell.headers
-      }));
+      return profileShell(request, env, url);
     }
     if (!url.pathname.startsWith('/api/')) return env.ASSETS.fetch(request);
     const requestId = request.headers.get('cf-ray') || randomId(10);

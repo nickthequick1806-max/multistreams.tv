@@ -41,6 +41,9 @@ assert.equal(health.database, true);
 const signup = await request('/api/auth/signup', { method: 'POST', expected: 201, body: { email, username, password } });
 assert.equal(signup.user.username, username);
 assert.match(cookie, /^ms_session=/);
+const initialDevices = await request('/api/security/devices');
+assert.equal(initialDevices.devices.length, 1);
+assert.equal(initialDevices.devices[0].current, true);
 
 if (!skipExternalNotifications) {
   const contact = await request('/api/contact', { method: 'POST', expected: 201, body: { name: 'Integration QA', email, subject: 'Backend test', message: 'Confirm the contact form is stored by the backend.' } });
@@ -71,10 +74,11 @@ assert.equal((await request('/api/state')).state.layout, 'vertical');
 const saved = await request('/api/layouts', { method: 'POST', expected: 201, body: { name: 'Integration Layout', channels: layoutChannels, layout: 'vertical' } });
 assert.equal((await request('/api/layouts')).layouts[0].id, saved.layout.id);
 
-await request('/api/community-layouts', { method: 'POST', expected: 201, body: { name: 'Integration Community Layout', channels: layoutChannels, layout: 'vertical' } });
+const createdCommunity = await request('/api/community-layouts', { method: 'POST', expected: 201, body: { name: 'Integration Community Layout', channels: layoutChannels, layout: 'vertical' } });
 const community = await request(`/api/community-layouts?q=${encodeURIComponent(username)}`);
 assert.equal(community.layouts[0].submittedBy, username);
 assert.equal(community.layouts[0].submitterAvatar, uploadedAvatar.url);
+assert.equal((await request(`/api/profiles/${encodeURIComponent(username)}`)).profile.layouts.some(item => item.id === createdCommunity.id), true);
 
 const setup = await request('/api/security/totp/setup', { method: 'POST', body: {} });
 assert.match(setup.otpauthUri, /^otpauth:\/\/totp\//);
@@ -118,9 +122,11 @@ assert.equal(search.profiles.some(item => item.username === username), true);
 
 await request(`/api/layouts/${saved.layout.id}`, { method: 'DELETE' });
 assert.equal((await request('/api/layouts')).layouts.some(item => item.id === saved.layout.id), false);
+await request(`/api/community-layouts/${createdCommunity.id}`, { method: 'DELETE' });
+assert.equal((await request(`/api/community-layouts?q=${encodeURIComponent(username)}`)).layouts.some(item => item.id === createdCommunity.id), false);
 
 await request('/api/auth/account', { method: 'DELETE', body: { confirmation: username } });
 cookie = '';
 assert.equal((await request('/api/auth/session')).authenticated, false);
 
-console.log(JSON.stringify({ ok: true, checks: 39 - Number(skipExternalNotifications) - (skipRewards ? 7 : 0), user: username, rewards }));
+console.log(JSON.stringify({ ok: true, checks: 44 - Number(skipExternalNotifications) - (skipRewards ? 7 : 0), user: username, rewards }));

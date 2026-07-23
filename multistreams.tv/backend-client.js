@@ -147,6 +147,53 @@
     return payload;
   }
 
+  function describeDevice(userAgent) {
+    const ua = String(userAgent || '');
+    const browser = /Edg\//.test(ua) ? 'Microsoft Edge' : /OPR\//.test(ua) ? 'Opera' : /Firefox\//.test(ua) ? 'Firefox' : /Chrome\//.test(ua) ? 'Google Chrome' : /Safari\//.test(ua) ? 'Safari' : 'Web Browser';
+    const system = /Windows NT/.test(ua) ? 'Windows' : /Android/.test(ua) ? 'Android' : /iPhone|iPad/.test(ua) ? 'iOS' : /Mac OS X/.test(ua) ? 'macOS' : /Linux/.test(ua) ? 'Linux' : 'Unknown device';
+    return `${browser} on ${system}`;
+  }
+
+  async function loadSecurityDevices() {
+    if (!accountState.signedIn) {
+      accountState.devices = [];
+      renderSignedInDevices?.();
+      return;
+    }
+    const payload = await api('/api/security/devices');
+    accountState.devices = (payload.devices || []).map(device => ({
+      id: device.id,
+      name: describeDevice(device.user_agent),
+      lastActive: device.last_seen_at || device.created_at,
+      current: Boolean(device.current)
+    }));
+    renderSignedInDevices?.();
+  }
+
+  window.renderSignedInDevices = () => {
+    const list = document.getElementById('security-device-list');
+    if (!list) return;
+    const devices = accountState.signedIn ? accountState.devices || [] : [];
+    list.innerHTML = devices.length ? devices.map(device => `<div class="security-device-card"><span class="security-device-icon"><i class="fa-solid fa-laptop" aria-hidden="true"></i></span><span class="security-device-copy"><strong>${escapeHTML(device.name)}</strong><span>Active ${new Date(device.lastActive || Date.now()).toLocaleString()}</span></span>${device.current ? '<span class="security-current-badge">Current</span>' : ''}<button type="button" class="security-device-signout" data-device-signout="${escapeHTML(device.id)}">Sign Out</button></div>`).join('') : '<div class="privacy-blocked-empty">No signed-in devices to display.</div>';
+    list.querySelectorAll('[data-device-signout]').forEach(button => button.addEventListener('click', () => window.signOutSecurityDevice(button.dataset.deviceSignout)));
+  };
+
+  window.signOutSecurityDevice = async deviceId => {
+    try {
+      const payload = await api(`/api/security/devices/${encodeURIComponent(deviceId)}`, { method: 'DELETE' });
+      if (payload.current) {
+        applySession({ authenticated: false, user: null });
+        closeSettingsModal?.(null, true);
+        channels = []; savedLayouts = [];
+        renderStreams?.(); renderChatOptions?.(); updateChatVisibility?.();
+        showNotification('Signed out of this device', 'info', { force: true, position: 'bottom-right' });
+        return;
+      }
+      await loadSecurityDevices();
+      showNotification('Device signed out', 'settings', { force: true, position: 'bottom-right' });
+    } catch (error) { notifyError(error); }
+  };
+
   async function loadRemoteProfile() {
     if (!accountState.signedIn) return;
     const payload = await api('/api/profile/me');
@@ -282,7 +329,7 @@
       mockLiveStreamers = [];
       const session = await refreshSession();
       const jobs = [loadFeatured()];
-      if (session.authenticated) jobs.push(loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData());
+      if (session.authenticated) jobs.push(loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData(), loadSecurityDevices());
       else {
         channels = [];
         savedLayouts = [];
@@ -295,6 +342,10 @@
       await Promise.allSettled(jobs);
       real.bootstrapped = true;
       const params = new URLSearchParams(location.search);
+      const sharedLayout = typeof parseProfileLayoutLink === 'function' ? parseProfileLayoutLink(location.href) : null;
+      if (sharedLayout?.streams?.length) {
+        applyLoadedLayout({ name: 'Shared layout', streams: sharedLayout.streams, layout: sharedLayout.layout, source: 'Shared link' });
+      }
       if (params.get('status') === 'connected') showNotification(`${params.get('oauth') || 'Platform'} connected successfully`, 'saved', { position: 'bottom-right' });
       if (params.get('auth') === 'success') showNotification('Signed in successfully', 'saved', { position: 'bottom-right' });
       if (params.has('oauth') || params.has('auth') || params.has('status')) {
@@ -321,7 +372,7 @@
       }) });
       closeAccountSignupModal(null, true);
       await refreshSession();
-      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData()]);
+      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData(), loadSecurityDevices()]);
       showNotification('Your account is ready', 'saved', { position: 'bottom-right' });
     } catch (error) { if (errorElement) errorElement.textContent = error.message; }
   };
@@ -344,7 +395,7 @@
       }
       closeAccountLoginModal(null, true);
       await refreshSession();
-      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData()]);
+      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData(), loadSecurityDevices()]);
       showNotification('Signed in successfully', 'saved', { position: 'bottom-right' });
     } catch (error) { if (errorElement) errorElement.textContent = error.message; }
   };
@@ -357,7 +408,7 @@
       real.loginTicket = '';
       closeAccountTwoFactorModal(null, true);
       await refreshSession();
-      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData()]);
+      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData(), loadSecurityDevices()]);
       showNotification('Two-factor sign-in verified', 'saved', { position: 'bottom-right' });
     } catch (error) { if (errorElement) errorElement.textContent = error.message; }
   };
@@ -619,6 +670,45 @@
       await api('/api/community-layouts', { method: 'POST', body: JSON.stringify({ name, channels: layoutChannels, layout: parsed?.layout || currentLayout }) });
       closeSubmitLayoutModal(null, true);
       showNotification(`“${name}” was submitted to Community Layouts`, 'submitted');
+    } catch (error) { notifyError(error); }
+  };
+
+  window.addProfileSharedLayout = async () => {
+    const nameInput = document.getElementById('profile-layout-name-input');
+    const linkInput = document.getElementById('profile-layout-link-input');
+    const name = nameInput?.value.trim() || '';
+    const parsed = parseProfileLayoutLink(linkInput?.value.trim() || '');
+    if (!name) {
+      nameInput?.setCustomValidity('Enter a layout name.');
+      nameInput?.reportValidity();
+      nameInput?.addEventListener('input', () => nameInput.setCustomValidity(''), { once: true });
+      return;
+    }
+    if (!parsed?.streams?.length) {
+      linkInput?.setCustomValidity('Enter a valid Multistreams layout share link.');
+      linkInput?.reportValidity();
+      linkInput?.addEventListener('input', () => linkInput.setCustomValidity(''), { once: true });
+      return;
+    }
+    try {
+      await api('/api/community-layouts', { method: 'POST', body: JSON.stringify({ name, channels: parsed.streams, layout: parsed.layout }) });
+      await loadRemoteProfile();
+      renderProfileSharedLayouts(real.profile);
+      closeProfileLayoutAddModal(null, true);
+      showNotification(`Added “${name}” to your profile`, 'saved', { position: 'bottom-right' });
+    } catch (error) { notifyError(error); }
+  };
+
+  window.removeProfileSharedLayout = async (event, layoutId) => {
+    event?.stopPropagation();
+    const layout = real.profile?.layouts?.find(item => item.id === layoutId);
+    try {
+      await api(`/api/community-layouts/${encodeURIComponent(layoutId)}`, { method: 'DELETE' });
+      real.communityLayouts = real.communityLayouts.filter(item => item.id !== layoutId);
+      await loadRemoteProfile();
+      renderProfileSharedLayouts(real.profile);
+      renderRealCommunityLayouts(real.communityLayouts);
+      showNotification(`Removed “${layout?.name || 'layout'}” from your profile and Community Layouts`, 'deleted', { position: 'bottom-right' });
     } catch (error) { notifyError(error); }
   };
 

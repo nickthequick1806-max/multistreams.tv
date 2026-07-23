@@ -26,6 +26,7 @@ function publicUser(row) {
 async function authContext(request, env) {
   const session = await optionalSession(request, env);
   if (!session) return { authenticated: false, user: null, connections: [] };
+  await env.DB.prepare('UPDATE sessions SET last_seen_at = ?1 WHERE id = ?2').bind(nowIso(), session.session_id).run();
   const connections = await env.DB.prepare('SELECT platform, platform_username, updated_at FROM oauth_connections WHERE user_id = ?1 ORDER BY platform').bind(session.user_id).all();
   return { authenticated: true, user: publicUser(session), connections: connections.results || [] };
 }
@@ -135,6 +136,15 @@ async function devices(request, env) {
   return json({ ok: true, devices: (rows.results || []).map(row => ({ ...row, current: row.id === session.session_id })) });
 }
 
+async function signOutDevice(request, env, deviceId) {
+  const session = await requireSession(request, env);
+  const device = await env.DB.prepare('SELECT id FROM sessions WHERE id = ?1 AND user_id = ?2').bind(deviceId, session.user_id).first();
+  if (!device) throw new HttpError(404, 'That signed-in device was not found.', 'device_not_found');
+  const current = device.id === session.session_id;
+  await env.DB.prepare('DELETE FROM sessions WHERE id = ?1 AND user_id = ?2').bind(deviceId, session.user_id).run();
+  return json({ ok: true, id: deviceId, current }, current ? { headers: { 'set-cookie': clearSessionCookie(env) } } : {});
+}
+
 async function updateAccount(request, env) {
   const session = await requireSession(request, env);
   const body = await readJson(request);
@@ -186,6 +196,8 @@ export async function handleAuthRoute(request, env, url) {
   if (path === '/api/security/totp/verify' && request.method === 'POST') return verifyTotpSetup(request, env);
   if (path === '/api/security/totp' && request.method === 'DELETE') return disableTotp(request, env);
   if (path === '/api/security/devices' && request.method === 'GET') return devices(request, env);
+  const deviceMatch = path.match(/^\/api\/security\/devices\/([^/]+)$/);
+  if (deviceMatch && request.method === 'DELETE') return signOutDevice(request, env, deviceMatch[1]);
   return null;
 }
 

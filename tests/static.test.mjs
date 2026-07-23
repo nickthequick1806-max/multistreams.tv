@@ -39,3 +39,13 @@ test('YouTube account connection reuses the Google profile OAuth entry point', (
   assert.match(oauthRoute, /fetchIdentity\(connectedPlatform, tokens\.access_token, env\)/);
   assert.match(oauthRoute, /destination\.searchParams\.set\('oauth', connectedPlatform\)/);
 });
+
+test('production UI fixes remain wired to backend-normalized data', () => {
+  assert.doesNotMatch(html, /id="ai-search-model"/);
+  assert.match(html, /notificationsEnabled:\s*true/);
+  assert.match(html, /uiSounds:\s*true/);
+  assert.match(html, /data\.items\?\.find\(item => item\.platform === 'youtube'\)\?\.id/);
+  assert.match(html, /data\.items\?\.\[0\]\?\.id \|\| null/);
+  assert.match(backendClient, /parseProfileLayoutLink\(location\.href\)/);
+  assert.match(backendClient, /\/api\/security\/devices\/\$\{encodeURIComponent\(deviceId\)\}/);
+});

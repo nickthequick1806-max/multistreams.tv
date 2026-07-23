@@ -77,6 +77,7 @@ async function startOAuth(request, env, platform, url) {
     params.set('include_granted_scopes', 'true');
     params.set('prompt', 'consent');
   }
+  if (platform === 'twitch') params.set('force_verify', 'true');
   return Response.redirect(`${config.authorize}?${params.toString()}`, 302);
 }
 

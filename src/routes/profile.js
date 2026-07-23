@@ -128,7 +128,13 @@ async function followed(request, env) {
   const session = await requireSession(request, env);
   const rows = await env.DB.prepare(`SELECT u.id, u.username, u.avatar_url, u.banner_url FROM profile_follows f
     JOIN users u ON u.id = f.followed_user_id WHERE f.follower_user_id = ?1 ORDER BY f.created_at DESC`).bind(session.user_id).all();
-  return json({ ok: true, profiles: rows.results || [] });
+  return json({ ok: true, profiles: (rows.results || []).map(row => ({
+    id: row.id,
+    username: row.username,
+    avatarUrl: row.avatar_url || '/logos and assets/defualt_profile_pfp.png',
+    bannerUrl: row.banner_url || '/logos and assets/defualt_profile_banner.png',
+    access: { allowed: true, own: false, reason: '' }
+  })) });
 }
 
 async function block(request, env, username, enabled) {

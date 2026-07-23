@@ -10,8 +10,8 @@ test('collectible catalog contains ten unique cards in all six rarities', () => 
   assert.equal(RARITIES.reduce((total, rarity) => total + rarity.chance, 0), 100);
 });
 
-test('AI uses a currently supported Gemini model', () => {
-  assert.equal(MODELS[0].id, 'gemini-3.5-flash');
+test('AI uses Gemini 3.6 Flash with a hidden rate-limit fallback', () => {
+  assert.equal(MODELS[0].id, 'gemini-3.6-flash');
+  assert.equal(MODELS[1].id, 'gemini-3.5-flash-lite');
   assert.equal(MODELS.some(model => model.id === 'gemini-2.5-flash'), false);
 });
-
