@@ -11,17 +11,28 @@ async function api(path) {
 }
 
 let live = null;
+let detail = null;
 for (const query of ['live news', '24/7 live', 'music live', 'gaming live']) {
   const directory = await api(`/api/browse/youtube?view=live&q=${encodeURIComponent(query)}&limit=8`);
-  live = (directory.items || []).find(item => item.live && /^[A-Za-z0-9_-]{11}$/.test(item.id));
-  if (live) break;
+  for (const candidate of (directory.items || []).filter(item => item.live && /^[A-Za-z0-9_-]{11}$/.test(item.id))) {
+    const candidateDetail = (await api(`/api/channel/youtube/${encodeURIComponent(candidate.id)}`)).channel;
+    if (candidateDetail.requestedVideo?.live === true && candidateDetail.live === true) {
+      live = candidate;
+      detail = candidateDetail;
+      break;
+    }
+  }
+  if (live && detail) break;
 }
 assert.ok(live, 'YouTube live directory did not return a playable live video.');
 
-const detail = (await api(`/api/channel/youtube/${encodeURIComponent(live.id)}`)).channel;
 assert.equal(detail.requestedVideo?.id, live.id);
 assert.equal(detail.requestedVideo?.live, true);
 assert.equal(detail.live, true);
+
+const offline = (await api('/api/channel/youtube/dQw4w9WgXcQ')).channel;
+assert.equal(offline.requestedVideo?.live, false);
+assert.equal(offline.live, false);
 
 const player = await fetch(`https://www.youtube.com/embed/${encodeURIComponent(live.id)}?autoplay=1&mute=1`, { redirect: 'manual' });
 assert.equal(player.status, 200);

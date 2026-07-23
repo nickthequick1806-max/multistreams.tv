@@ -33,7 +33,7 @@
 
   function avatarMarkup(item, className, forceInitials = false) {
     const name = item?.name || item?.displayName || item?.username || 'Multistreams';
-    const useInitials = forceInitials || item?.platform === 'kick' || !item?.avatar;
+    const useInitials = forceInitials || !item?.avatar;
     if (useInitials) return `<span class="${escapeHTML(className)} generated-profile-avatar" role="img" aria-label="${escapeHTML(name)}">${escapeHTML(profileInitials(name))}</span>`;
     return `<img class="${escapeHTML(className)}" src="${escapeHTML(item.avatar)}" alt="${escapeHTML(name)}" loading="lazy">`;
   }
@@ -261,10 +261,31 @@
       if (list) list.innerHTML = `<div style="padding:12px;color:var(--text-muted);font-size:11px;line-height:1.45;">${real.connections.length ? 'None of your supported followed channels are live right now.' : 'Connect Twitch or YouTube to see followed channels that are live.'}</div>`;
     }
     updateConnectAccountStatuses?.();
-    mockLiveStreamers = followedStreams.map(stream => ({ username: stream.name || stream.username, title: stream.title || '', avatar: stream.avatar || '', platform: stream.platform, category: stream.category || 'Live', viewers: compact(stream.viewers), timestamp: new Date().toISOString() }));
+    pruneDeletedLiveNotifications?.(followedStreams);
+    const visibleFollowedStreams = followedStreams.filter(stream => !isLiveNotificationDismissed?.(stream));
+    mockLiveStreamers = visibleFollowedStreams.map(stream => ({
+      username: stream.name || stream.username,
+      channelUsername: stream.username || stream.name,
+      title: stream.title || '',
+      avatar: stream.avatar || '',
+      platform: stream.platform,
+      category: stream.category || 'Live',
+      viewers: hasViewerCount(stream) ? compact(stream.viewers) : 'LIVE',
+      startedAt: stream.startedAt || '',
+      timestamp: new Date().toISOString()
+    }));
     saveLiveNotifications?.();
-    newlyLive.forEach(stream => {
-      showLiveNotificationPopup?.({ username: stream.name || stream.username, title: stream.title || `${stream.name || stream.username} is now live`, avatar: stream.avatar || '', platform: stream.platform, category: stream.category || 'Live', viewers: compact(stream.viewers) });
+    newlyLive.filter(stream => !isLiveNotificationDismissed?.(stream)).forEach(stream => {
+      showLiveNotificationPopup?.({
+        username: stream.name || stream.username,
+        channelUsername: stream.username || stream.name,
+        title: stream.title || `${stream.name || stream.username} is now live`,
+        avatar: stream.avatar || '',
+        platform: stream.platform,
+        category: stream.category || 'Live',
+        viewers: hasViewerCount(stream) ? compact(stream.viewers) : 'LIVE',
+        startedAt: stream.startedAt || ''
+      });
     });
     calculateNotificationCounts?.();
   }
@@ -743,7 +764,8 @@
       const payload = await api(`/api/search/global?q=${encodeURIComponent(query)}&limit=20`);
       return (payload.items || []).filter(item => item.platform === platform).map(item => ({
         id: item.id, name: item.username || item.name, username: item.username, displayName: item.name, platform: item.platform,
-        avatar: item.avatar, thumbnail: item.avatar, live: item.live, category: item.category, viewers: item.viewers ?? null, viewerCountAvailable: item.viewerCountAvailable, url: item.url
+        avatar: item.avatar, thumbnail: item.avatar, live: item.live, category: item.category, title: item.title || '',
+        viewers: item.viewers ?? null, viewerCountAvailable: item.viewerCountAvailable, url: item.url
       }));
     } catch { return []; }
   }
@@ -756,7 +778,7 @@
         groups[item.platform].push({
           id: item.id, name: item.username || item.name, username: item.username, displayName: item.name,
           platform: item.platform, avatar: item.avatar, thumbnail: item.avatar, live: item.live,
-          category: item.category, viewers: item.viewers ?? null, viewerCountAvailable: item.viewerCountAvailable, url: item.url
+          category: item.category, title: item.title || '', viewers: item.viewers ?? null, viewerCountAvailable: item.viewerCountAvailable, url: item.url
         });
       }
       return groups;
@@ -790,7 +812,7 @@
     catch { return []; }
   };
   window.searchKick = async query => {
-    try { const payload = await api(`/api/channel/kick/${encodeURIComponent(query)}`); const item = payload.channel; return [{ id: item.id, name: item.username, username: item.username, displayName: item.name, platform: 'kick', avatar: '', live: item.live, category: item.category, viewers: item.viewers ?? null, viewerCountAvailable: item.viewerCountAvailable, url: item.url }]; }
+    try { const payload = await api(`/api/channel/kick/${encodeURIComponent(query)}`); const item = payload.channel; return [{ id: item.id, name: item.username, username: item.username, displayName: item.name, platform: 'kick', avatar: item.avatar || '', live: item.live, category: item.category, title: item.title || '', viewers: item.viewers ?? null, viewerCountAvailable: item.viewerCountAvailable, url: item.url }]; }
     catch { return []; }
   };
   window.searchRumble = async (query, limit = 10) => {
@@ -893,9 +915,30 @@
     try {
       const detail = await resolveChannel(platform, name);
       const directYoutubeVideo = platform === 'youtube' && /^[A-Za-z0-9_-]{11}$/.test(name);
-      if (platform === 'youtube' && !directYoutubeVideo && !detail.stream?.id) throw new Error(`${detail.name || name} is not live on YouTube right now.`);
-      const playerName = platform === 'youtube' ? (directYoutubeVideo ? name : detail.stream.id) : (detail.username || name.toLowerCase());
-      const newStream = { id: `${Date.now()}${Math.random().toString(36).slice(2)}`, name: playerName, platform, muted: true, displayName: detail.name || displayName || name, viewers: detail.live ? compact(detail.viewers) : 'Offline', time: detail.live ? elapsed(detail.stream?.startedAt) : 'Offline', avatar: detail.avatar, banner: detail.banner, followers: detail.followers, category: detail.category, title: detail.title, url: detail.url, live: detail.live };
+      const videoId = platform === 'youtube' ? (directYoutubeVideo ? name : detail.stream?.id || '') : '';
+      const playerName = platform === 'youtube'
+        ? (videoId || detail.id || detail.username || name)
+        : (detail.username || name.toLowerCase());
+      const viewerCountAvailable = hasViewerCount(detail);
+      const newStream = {
+        id: `${Date.now()}${Math.random().toString(36).slice(2)}`,
+        name: playerName,
+        platform,
+        muted: true,
+        displayName: detail.name || displayName || name,
+        viewers: detail.live ? (viewerCountAvailable ? compact(detail.viewers) : 'LIVE') : 'Offline',
+        viewerCountAvailable,
+        time: detail.live ? elapsed(detail.stream?.startedAt) : 'Offline',
+        avatar: detail.avatar || '',
+        banner: detail.banner || '',
+        followers: detail.followers,
+        category: detail.category,
+        title: detail.title,
+        url: detail.url,
+        live: detail.live,
+        videoId,
+        channelId: platform === 'youtube' ? detail.id || '' : ''
+      };
       channels.push(newStream); finishAddingStream(newStream, skipSave);
     } catch (error) { notifyError(error, `Could not load ${platform} channel data.`); }
   };
@@ -928,9 +971,12 @@
 
   function streamHoverCardMarkup(detail, stream) {
     const socialMarkup = (detail.socials || []).map(social => `<a href="${escapeHTML(social.url)}" target="_blank" rel="noopener" title="${escapeHTML(social.platform)}">${getPlatformIcon(social.platform)}</a>`).join('');
+    const liveSummary = hasViewerCount(detail)
+      ? `Streaming <span class="accent-text">${escapeHTML(detail.category || 'Live')}</span> with <span class="accent-text">${compact(detail.viewers)}</span> viewers`
+      : `Streaming <span class="accent-text">${escapeHTML(detail.category || 'Live')}</span> <span class="accent-text">&middot; LIVE</span>`;
     return `<div class="hover-banner" style="background-image:url('${String(detail.banner || '').replace(/['()]/g, '')}')"></div><div class="hover-pfp-wrapper">${avatarMarkup({ ...detail, platform: stream.platform }, 'hover-pfp')}${detail.live ? '<div class="hover-live-badge">LIVE</div>' : ''}</div>
       <div class="hover-content"><div class="hover-username">${escapeHTML(detail.name || stream.displayName || stream.name)}</div>${detail.followers === null || detail.followers === undefined ? '' : `<div class="hover-followers">${compact(detail.followers)} Followers</div>`}
-      <div class="hover-streaming">${detail.live ? `Streaming <span class="accent-text">${escapeHTML(detail.category || 'Live')}</span> with <span class="accent-text">${compact(detail.viewers)}</span> viewers` : 'Currently offline'}</div>
+      <div class="hover-streaming">${detail.live ? liveSummary : 'Currently offline'}</div>
       <div class="hover-socials">${socialMarkup}</div><div class="hover-actions"><a class="hover-follow-btn" href="${escapeHTML(detail.url || '#')}" target="_blank" rel="noopener">Open Channel</a><button class="hover-report-btn" title="Report" onclick="openFeedbackModal?.()"><i class="fas fa-exclamation-triangle"></i></button></div></div>`;
   }
 

@@ -31,7 +31,7 @@ test('all inline classic scripts and the backend client parse as JavaScript', ()
 });
 
 test('platform-aware UI fallbacks and category metadata rules are present', () => {
-  assert.match(backendClient, /item\?\.platform === 'kick'/);
+  assert.doesNotMatch(backendClient, /forceInitials \|\| item\?\.platform === 'kick'/);
   assert.match(backendClient, /suggested-platform-icon/);
   assert.match(backendClient, /hasViewerCount/);
   assert.match(backendClient, /\['kick', 'youtube'\]\.includes\(currentBrowsePlatform\)/);
@@ -55,6 +55,14 @@ test('production UI fixes remain wired to backend-normalized data', () => {
   assert.match(html, /data\.items\?\.\[0\]\?\.id \|\| null/);
   assert.match(backendClient, /parseProfileLayoutLink\(location\.href\)/);
   assert.match(backendClient, /\/api\/security\/devices\/\$\{encodeURIComponent\(deviceId\)\}/);
+  assert.match(html, /AI_SEARCH_ICON\.png/);
+  assert.match(html, /stream\.platform === 'youtube' && stream\.id \? stream\.id/);
+  assert.match(backendClient, /videoId \|\| detail\.id \|\| detail\.username \|\| name/);
+  assert.doesNotMatch(backendClient, /is not live on YouTube right now/);
+  assert.match(html, /function liveNotificationIdentity/);
+  assert.match(html, /function pruneDeletedLiveNotifications/);
+  assert.match(html, /loadLiveNotifications\(\);\s*calculateNotificationCounts/);
+  assert.doesNotMatch(html, /mockLiveStreamers = \[\];\s*deletedLiveNotifications = \[\]/);
 });
 
 test('OAuth, AI recovery, YouTube data fallbacks, and share routes have regressions covered', () => {
@@ -91,5 +99,12 @@ test('OAuth, AI recovery, YouTube data fallbacks, and share routes have regressi
   assert.match(platforms, /categoryName \? `\$\{categoryName\} live`/);
   assert.match(platforms, /const streams = requestedVideo\s*\?\s*\(requestedVideo\.live \? \[requestedVideo\] : \[\]\)/);
   assert.match(platforms, /SCRAPECREATORS_API_KEY && error\?\.code === 'youtube_rate_limited'/);
+  assert.match(platforms, /async function kickUsers/);
+  assert.match(platforms, /async function kickChannelDetail/);
+  assert.match(platforms, /broadcaster_user/);
+  assert.match(platforms, /profile_picture/);
+  assert.match(platforms, /appToken\(env, 'kick', true\)/);
+  assert.match(backendClient, /avatar: item\.avatar \|\| ''/);
+  assert.match(backendClient, /hasViewerCount\(detail\)/);
   assert.doesNotMatch(html, /enteringGrid[\s\S]{0,500}player\.kick\.com/);
 });

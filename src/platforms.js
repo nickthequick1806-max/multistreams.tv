@@ -71,10 +71,24 @@ async function twitchApi(env, path, accessToken) {
 }
 
 async function kickApi(env, path, accessToken) {
-  const token = accessToken || await appToken(env, 'kick');
-  const response = await fetch(`https://api.kick.com${path}`, { headers: { authorization: `Bearer ${token}`, accept: 'application/json' } });
-  if (!response.ok) throw new HttpError(response.status === 429 ? 429 : 502, `Kick API request failed (${response.status}).`, 'kick_api_error');
-  return response.json();
+  const request = async token => {
+    const response = await fetch(`https://api.kick.com${path}`, { headers: { authorization: `Bearer ${token}`, accept: 'application/json' } });
+    const payload = await response.json().catch(() => ({}));
+    return { response, payload };
+  };
+  let token = accessToken || await appToken(env, 'kick');
+  let result = await request(token);
+  if (result.response.status === 401 && !accessToken) {
+    token = await appToken(env, 'kick', true);
+    result = await request(token);
+  }
+  if (!result.response.ok) {
+    const status = result.response.status;
+    throw new HttpError(status === 401 ? 401 : status === 429 ? 429 : 502, `Kick API request failed (${status}).`, 'kick_api_error', {
+      providerMessage: String(result.payload?.message || result.payload?.error || '').slice(0, 200)
+    });
+  }
+  return result.payload;
 }
 
 async function youtubeApi(env, path, accessToken) {
@@ -584,21 +598,102 @@ function youtubeCategoryImage(name) {
   return images[String(name || '').toLowerCase()] || 'https://images.unsplash.com/photo-1492724441997-5dc865305da7?auto=format&fit=crop&w=570&h=760&q=80';
 }
 
-function normalizeKickLive(item) {
+async function kickUsers(env, ids = []) {
+  const uniqueIds = [...new Set(ids.map(String).filter(Boolean))].slice(0, 100);
+  if (!uniqueIds.length) return [];
+  const params = new URLSearchParams();
+  uniqueIds.forEach(id => params.append('id', id));
+  return (await kickApi(env, `/public/v1/users?${params}`)).data || [];
+}
+
+function normalizeKickLive(item, userOverride = null) {
   const channel = item.channel || item.livestream?.channel || {};
   const category = item.category || item.livestream?.category || {};
-  const user = item.user || channel.user || {};
+  const user = userOverride || item.broadcaster_user || item.user || channel.user || {};
   const slug = channel.slug || item.channel_slug || item.slug || user.username || '';
   const viewerCount = availableNumber(item.viewer_count, item.viewers, item.livestream?.viewer_count);
+  const viewerCountAvailable = viewerCount !== null && viewerCount > 0;
+  const startedAt = item.started_at || item.start_time || item.created_at || '';
   return {
-    id: String(item.id || item.livestream_id || slug), platform: 'kick', name: channel.name || user.username || slug, username: slug,
+    id: String(item.id || item.livestream_id || slug), broadcasterUserId: String(user.id || user.user_id || item.broadcaster_user_id || ''),
+    platform: 'kick', name: user.name || user.username || channel.name || slug, username: slug,
     title: item.stream_title || item.title || channel.stream_title || '', category: category.name || category.title || 'Live', categoryId: String(category.id || category.category_id || ''),
-    viewers: viewerCount, viewerCountAvailable: viewerCount !== null, startedAt: item.start_time || item.created_at || '',
-    durationSeconds: item.start_time ? Math.floor((Date.now() - new Date(item.start_time).getTime()) / 1000) : 0,
-    tags: item.custom_tags || category.tags || [], thumbnail: item.thumbnail || item.thumbnail_url || channel.thumbnail || '',
-    avatar: '', banner: channel.banner_image || channel.banner || '',
+    viewers: viewerCountAvailable ? viewerCount : null, viewerCountAvailable, startedAt,
+    durationSeconds: startedAt ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)) : 0,
+    tags: item.custom_tags || item.tags || category.tags || [], thumbnail: item.thumbnail || item.thumbnail_url || channel.thumbnail || '',
+    avatar: user.profile_picture || user.profilePicture || user.avatar || '', banner: channel.banner_picture || channel.banner_image || channel.banner || '',
     url: `https://kick.com/${encodeURIComponent(slug)}`, live: true
   };
+}
+
+function normalizeKickChannel(row, user = {}) {
+  const slug = String(row.slug || user.username || user.name || '').trim();
+  const streamData = row.stream || {};
+  const isLive = streamData.is_live === true;
+  const rawViewerCount = isLive ? availableNumber(streamData.viewer_count) : null;
+  const viewerCountAvailable = isLive && rawViewerCount !== null && rawViewerCount > 0;
+  const startedAt = isLive && streamData.start_time && !String(streamData.start_time).startsWith('0001-')
+    ? streamData.start_time
+    : '';
+  const base = {
+    platform: 'kick',
+    id: String(row.broadcaster_user_id || row.id || user.user_id || slug),
+    broadcasterUserId: String(row.broadcaster_user_id || user.user_id || ''),
+    username: slug,
+    name: user.name || user.username || row.name || slug,
+    description: row.channel_description || row.description || '',
+    avatar: user.profile_picture || row.profile_picture || '',
+    banner: row.banner_picture || row.banner_image || '',
+    followers: null,
+    live: isLive,
+    category: row.category?.name || '',
+    categoryId: String(row.category?.id || ''),
+    title: row.stream_title || '',
+    viewers: viewerCountAvailable ? rawViewerCount : null,
+    viewerCountAvailable,
+    url: `https://kick.com/${encodeURIComponent(slug)}`,
+    socials: [{ platform: 'kick', url: `https://kick.com/${encodeURIComponent(slug)}` }]
+  };
+  const stream = isLive ? {
+    id: String(row.broadcaster_user_id || slug),
+    broadcasterUserId: base.broadcasterUserId,
+    platform: 'kick',
+    name: base.name,
+    username: slug,
+    title: base.title,
+    category: base.category || 'Live',
+    categoryId: base.categoryId,
+    viewers: base.viewers,
+    viewerCountAvailable,
+    startedAt,
+    durationSeconds: startedAt ? Math.max(0, Math.floor((Date.now() - new Date(startedAt).getTime()) / 1000)) : 0,
+    tags: row.custom_tags || [],
+    thumbnail: streamData.thumbnail || '',
+    avatar: base.avatar,
+    banner: base.banner,
+    url: base.url,
+    live: true
+  } : null;
+  return { ...base, stream };
+}
+
+async function kickChannelDetail(env, identifier) {
+  const normalized = String(identifier || '').trim().replace(/^@/, '').toLowerCase();
+  const cacheKey = `kick:channel:v3:${normalized}`;
+  const cached = await cacheGet(env, cacheKey);
+  if (cached) return cached;
+  const params = new URLSearchParams(); params.append('slug', normalized);
+  const payload = await kickApi(env, `/public/v1/channels?${params}`);
+  const row = payload.data?.[0] || null;
+  if (!row) throw new HttpError(404, 'Kick channel not found.', 'channel_not_found');
+  let user = {};
+  const userId = row.broadcaster_user_id || row.id;
+  if (userId) {
+    try { user = (await kickUsers(env, [userId]))[0] || {}; } catch {}
+  }
+  const detail = normalizeKickChannel(row, user);
+  await cachePut(env, cacheKey, detail, detail.live ? 45 : 300);
+  return detail;
 }
 
 async function kickLive(env, limit = 40, categoryId = '') {
@@ -606,7 +701,22 @@ async function kickLive(env, limit = 40, categoryId = '') {
   if (categoryId) params.set('category_id', categoryId);
   const payload = await kickApi(env, `/public/v2/livestreams?${params}`);
   const rows = payload.data || payload.livestreams || [];
-  return rows.map(normalizeKickLive).sort((a, b) => b.viewers - a.viewers).slice(0, limit);
+  const normalized = rows.map(item => normalizeKickLive(item));
+  const missingAvatarIds = normalized.filter(item => !item.avatar && item.broadcasterUserId).map(item => item.broadcasterUserId);
+  if (missingAvatarIds.length) {
+    try {
+      const users = await kickUsers(env, missingAvatarIds);
+      const usersById = new Map(users.map(user => [String(user.user_id || user.id), user]));
+      for (const item of normalized) {
+        const user = usersById.get(item.broadcasterUserId);
+        if (user && !item.avatar) {
+          item.avatar = user.profile_picture || '';
+          item.name = user.name || item.name;
+        }
+      }
+    } catch {}
+  }
+  return normalized.sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0)).slice(0, limit);
 }
 
 async function kickCategories(env, limit = 30, query = '') {
@@ -662,13 +772,7 @@ async function channelDetail(env, platform, identifier, options = {}) {
     }
   }
   if (platform === 'kick') {
-    const params = new URLSearchParams(); params.append('slug', normalized);
-    const payload = await kickApi(env, `/public/v1/channels?${params}`);
-    const row = payload.data?.[0] || payload.data || null;
-    if (!row) throw new HttpError(404, 'Kick channel not found.', 'channel_not_found');
-    const live = await kickLive(env, 1, String(row.category?.id || ''));
-    const stream = live.find(item => item.username.toLowerCase() === normalized.toLowerCase()) || null;
-    return { platform, id: String(row.broadcaster_user_id || row.id || normalized), username: row.slug || normalized, name: row.name || row.slug || normalized, description: row.description || '', avatar: '', banner: row.banner_image || '', followers: Number(row.followers_count || 0) || null, live: Boolean(stream), stream, category: stream?.category || row.category?.name || '', title: stream?.title || row.stream_title || '', viewers: stream?.viewers ?? null, viewerCountAvailable: Boolean(stream?.viewerCountAvailable), url: `https://kick.com/${encodeURIComponent(row.slug || normalized)}`, socials: [{ platform: 'kick', url: `https://kick.com/${encodeURIComponent(row.slug || normalized)}` }] };
+    return kickChannelDetail(env, normalized);
   }
   throw new HttpError(501, `${platform} does not expose an official channel lookup API for this feature.`, 'platform_capability_unavailable');
 }
@@ -776,7 +880,7 @@ export async function browse(env, platform, view, options = {}) {
   const categoryId = String(options.categoryId || '').trim();
   const channelId = String(options.channelId || '').trim();
   const chart = String(options.chart || '').trim();
-  const cacheKey = `browse:v6:${platform}:${view}:${limit}:${categoryId}:${channelId}:${chart}:${query.toLowerCase()}`;
+  const cacheKey = `browse:v7:${platform}:${view}:${limit}:${categoryId}:${channelId}:${chart}:${query.toLowerCase()}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   let items;
@@ -798,7 +902,7 @@ export async function browse(env, platform, view, options = {}) {
 }
 
 export async function featured(env, limit = 20) {
-  const cacheKey = `featured:v5:${limit}`;
+  const cacheKey = `featured:v6:${limit}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   const config = parseJson(env.FEATURED_CHANNELS_JSON, {});
@@ -933,12 +1037,13 @@ async function searchKickChannels(env, query, limit) {
   const matches = live.filter(item => `${item.name} ${item.username}`.toLowerCase().includes(normalized)).slice(0, limit);
   if (!matches.some(item => item.username.toLowerCase() === normalized)) {
     try {
-      const exact = await channelDetail(env, 'kick', query);
+      const exact = await kickChannelDetail(env, query);
       matches.unshift(exact);
     } catch {}
   }
   return matches.slice(0, limit).map(item => ({
-    platform: 'kick', id: item.id, name: item.name, username: item.username, avatar: '', banner: item.banner || '',
+    platform: 'kick', id: item.id, name: item.name, username: item.username, avatar: item.avatar || '', banner: item.banner || '',
+    title: item.title || item.stream?.title || '',
     live: Boolean(item.live), category: item.category || '', viewers: item.viewerCountAvailable && Number.isFinite(Number(item.viewers)) ? Number(item.viewers) : null, viewerCountAvailable: Boolean(item.live && item.viewerCountAvailable),
     url: item.url || `https://kick.com/${encodeURIComponent(item.username)}`
   }));
@@ -967,7 +1072,7 @@ export async function globalSearch(env, query, limit = 20) {
   const q = String(query || '').trim();
   if (q.length < 2) return [];
   const perPlatform = clampInt(Math.ceil(Number(limit || 20) / 4), 2, 10, 5);
-  const cacheKey = `search:global:v5:${q.toLowerCase()}:${perPlatform}`;
+  const cacheKey = `search:global:v6:${q.toLowerCase()}:${perPlatform}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   const settled = await Promise.allSettled([
@@ -981,4 +1086,4 @@ export async function globalSearch(env, query, limit = 20) {
   return results;
 }
 
-export { PLATFORM_CAPABILITIES, channelDetail };
+export { PLATFORM_CAPABILITIES, channelDetail, normalizeKickChannel, normalizeKickLive };
