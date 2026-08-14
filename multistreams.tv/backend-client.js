@@ -409,7 +409,7 @@
     if (!container) return;
     const sortedCategories = sortSidebarItems(real.recommendedCategories, item => item.watching);
     const shown = real.sidebarExpanded.categories ? sortedCategories : sortedCategories.slice(0, 6);
-    container.innerHTML = shown.map(category => `<div class="recommended-category" data-category-id="${escapeHTML(category.id)}"><img src="${escapeHTML(category.image || '')}" alt=""><span class="recommended-category-copy"><strong>${escapeHTML(category.name)}</strong><span>${Number(category.liveChannels || 0)} live channels</span></span><span class="recommended-category-viewers">${compact(category.watching)}</span></div>`).join('');
+    container.innerHTML = shown.map(category => `<div class="recommended-category" data-category-id="${escapeHTML(category.id)}"><img src="${escapeHTML(category.image || '')}" alt=""><span class="recommended-category-copy"><strong>${escapeHTML(category.name)}</strong><span>${Number(category.liveChannels || 0)}${category.liveChannelsComplete === false ? '+' : ''} live channels</span></span><span class="recommended-category-viewers">${compact(category.watching)}</span></div>`).join('');
     container.querySelectorAll('[data-category-id]').forEach(card => card.addEventListener('click', () => {
       const category = real.recommendedCategories.find(item => String(item.id) === String(card.dataset.categoryId));
       openClipsModal?.();
@@ -437,10 +437,73 @@
   window.renderSuggested = renderRealSuggested;
   window.renderFeaturedList = renderFeatured;
 
+  const SIDEBAR_LIVE_CACHE_KEY = 'multistreams:sidebar-live:v1';
+
+  function restoreSidebarLiveCache() {
+    if (real.featured.length) return;
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(SIDEBAR_LIVE_CACHE_KEY) || '[]');
+      if (Array.isArray(cached) && cached.length) real.featured = cached.filter(item => item?.live);
+    } catch {}
+  }
+
+  async function apiWithShortRetry(path, attempts = 3) {
+    let lastError;
+    for (let attempt = 0; attempt < attempts; attempt += 1) {
+      try { return await api(path); }
+      catch (error) {
+        lastError = error;
+        if (attempt + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 350 * (attempt + 1)));
+      }
+    }
+    throw lastError;
+  }
+
+  async function loadCompleteCategoryStats(category) {
+    let cursor = '';
+    let watching = 0;
+    let liveChannels = 0;
+    for (let chunk = 0; chunk < 6; chunk += 1) {
+      const suffix = cursor ? `&cursor=${encodeURIComponent(cursor)}` : '';
+      const payload = await api(`/api/browse/twitch?view=category-stats&categoryId=${encodeURIComponent(category.id)}${suffix}`);
+      const stats = payload.items?.[0] || {};
+      watching += Number(stats.watching || 0);
+      liveChannels += Number(stats.liveChannels || 0);
+      cursor = String(stats.nextCursor || '');
+      if (!cursor) break;
+    }
+    return { ...category, watching, liveChannels, liveChannelsComplete: !cursor, nextCursor: cursor };
+  }
+
   async function loadFeatured() {
-    const [payload, categories] = await Promise.all([api('/api/featured?limit=20'), api('/api/browse/twitch?view=categories&limit=30')]);
-    real.featured = (payload.items || []).filter(item => item.live);
-    real.recommendedCategories = (categories.items || []).sort((a, b) => Number(b.watching || 0) - Number(a.watching || 0));
+    restoreSidebarLiveCache();
+    if (real.featured.length) renderFeatured();
+    const [featuredResult, categoriesResult, categoryStatsResult] = await Promise.allSettled([
+      apiWithShortRetry('/api/featured?limit=20'),
+      api('/api/browse/twitch?view=categories&limit=30'),
+      api('/api/browse/twitch?view=categories&limit=6')
+    ]);
+    if (featuredResult.status === 'fulfilled') {
+      const liveItems = (featuredResult.value.items || []).filter(item => item.live);
+      if (liveItems.length) {
+        real.featured = liveItems;
+        try { sessionStorage.setItem(SIDEBAR_LIVE_CACHE_KEY, JSON.stringify(liveItems)); } catch {}
+      }
+    } else console.warn('Live Channels refresh failed; retaining the last good list.', featuredResult.reason);
+    const baseCategories = categoriesResult.status === 'fulfilled' ? categoriesResult.value.items || [] : real.recommendedCategories;
+    let preciseCategories = categoryStatsResult.status === 'fulfilled' ? categoryStatsResult.value.items || [] : [];
+    if (preciseCategories.length) {
+      const categoryCountResults = await Promise.allSettled(preciseCategories.map(category =>
+        loadCompleteCategoryStats(category)));
+      preciseCategories = preciseCategories.map((category, index) => {
+        const countResult = categoryCountResults[index]?.status === 'fulfilled' ? categoryCountResults[index].value : null;
+        return countResult || category;
+      });
+    }
+    const preciseById = new Map(preciseCategories.map(category => [String(category.id), category]));
+    real.recommendedCategories = (baseCategories.length ? baseCategories : preciseCategories)
+      .map(category => preciseById.get(String(category.id)) || category)
+      .sort((a, b) => Number(b.watching || 0) - Number(a.watching || 0));
     renderFeatured();
   }
 
@@ -1399,7 +1462,9 @@
   function renderPrivateMessages(messages) {
     const history = document.getElementById('private-message-history');
     if (!history) return;
-    history.innerHTML = messages.length ? messages.map(message => `<div class="private-message-bubble ${message.outgoing ? 'outgoing' : ''}"><p>${escapeHTML(message.body)}</p><time datetime="${escapeHTML(message.createdAt)}">${new Date(message.createdAt).toLocaleString()}</time></div>`).join('') : '<div class="profile-followed-empty" style="margin:auto;">No messages yet. Start the conversation.</div>';
+    const sender = real.activeConversation?.user || {};
+    const senderAvatar = sender.avatarUrl || '/logos and assets/defualt_profile_pfp.png';
+    history.innerHTML = messages.length ? messages.map(message => `<div class="private-message-row ${message.outgoing ? 'outgoing' : 'incoming'}">${message.outgoing ? '' : `<img class="private-message-sender-avatar" src="${escapeHTML(senderAvatar)}" alt="${escapeHTML(sender.username || 'Sender')}" loading="lazy">`}<div class="private-message-bubble ${message.outgoing ? 'outgoing' : ''}"><p>${escapeHTML(message.body)}</p><time datetime="${escapeHTML(message.createdAt)}">${new Date(message.createdAt).toLocaleString()}</time></div></div>`).join('') : '<div class="profile-followed-empty" style="margin:auto;">No messages yet. Start the conversation.</div>';
     history.scrollTop = history.scrollHeight;
   }
 

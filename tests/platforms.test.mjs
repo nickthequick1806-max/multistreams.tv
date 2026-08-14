@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isCreatorYoutubeLivePayload, normalizeKickChannel, normalizeKickLive, profileMedia } from '../src/platforms.js';
+import { browse, isCreatorYoutubeLivePayload, normalizeKickChannel, normalizeKickLive, normalizeYoutubeVideo, parseYoutubeBatchResponse, profileMedia } from '../src/platforms.js';
 
 function apiTestEnv() {
   return {
@@ -30,6 +30,61 @@ test('YouTube fallback candidates require a current live broadcast signal', () =
   assert.equal(isCreatorYoutubeLivePayload({ durationMs: 12_000, publishDateText: 'Started streaming yesterday' }), false);
   assert.equal(isCreatorYoutubeLivePayload({ durationMs: null, publishDateText: 'Streamed 2 hours ago' }), false);
   assert.equal(isCreatorYoutubeLivePayload({ durationMs: null, actualEndTime: '2026-07-23T12:00:00Z', publishDateText: 'Started streaming yesterday' }), false);
+});
+
+test('YouTube batch responses retain every subscription result and tolerate failed parts', () => {
+  const boundary = 'batch_response';
+  const body = [
+    `--${boundary}\r\nContent-Type: application/http\r\nContent-ID: <response-item-0>\r\n\r\nHTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{"items":[{"contentDetails":{"videoId":"live-a"}}]}\r\n`,
+    `--${boundary}\r\nContent-Type: application/http\r\nContent-ID: <response-item-1>\r\n\r\nHTTP/1.1 404 Not Found\r\nContent-Type: application/json\r\n\r\n{"error":{"code":404}}\r\n`,
+    `--${boundary}--\r\n`
+  ].join('');
+  const parsed = parseYoutubeBatchResponse(body, boundary, 2);
+  assert.equal(parsed[0].items[0].contentDetails.videoId, 'live-a');
+  assert.equal(parsed[1], null);
+});
+
+test('YouTube live records expose the real video category instead of a platform label', () => {
+  const stream = normalizeYoutubeVideo({
+    id: 'live-video',
+    snippet: { channelId: 'UC1', channelTitle: 'Creator', title: 'Live now', categoryId: '20', thumbnails: {} },
+    liveStreamingDetails: { actualStartTime: '2026-08-14T12:00:00Z', concurrentViewers: '123' },
+    statistics: {}, contentDetails: {}, status: { embeddable: true }
+  }, { id: 'UC1', snippet: { title: 'Creator', customUrl: '@creator', thumbnails: {} } }, new Map([['20', 'Gaming']]));
+  assert.equal(stream.category, 'Gaming');
+  assert.equal(stream.live, true);
+});
+
+test('sidebar Twitch categories count current channels from category-specific pages', { concurrency: false }, async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.hostname === 'id.twitch.tv') return Response.json({ access_token: 'app-token', expires_in: 3600 });
+    if (url.pathname.endsWith('/games/top')) return Response.json({ data: [
+      { id: '1', name: 'One', box_art_url: 'https://img.test/{width}x{height}.jpg' },
+      { id: '2', name: 'Two', box_art_url: 'https://img.test/{width}x{height}.jpg' }
+    ] });
+    if (url.pathname.endsWith('/streams')) {
+      const gameId = url.searchParams.get('game_id');
+      if (gameId === '1' && !url.searchParams.has('after')) return Response.json({
+        data: [{ viewer_count: 30 }, { viewer_count: 20 }],
+        pagination: { cursor: 'next-short-page' }
+      });
+      return Response.json({ data: gameId === '1' ? [{ viewer_count: 10 }] : [{ viewer_count: 7 }], pagination: {} });
+    }
+    throw new Error(`Unexpected test request: ${url}`);
+  };
+  try {
+    const categories = await browse(apiTestEnv(), 'twitch', 'categories', { limit: 2 });
+    assert.equal(categories.items[0].liveChannels, 2);
+    assert.equal(categories.items[0].liveChannelsComplete, false);
+    const result = await browse(apiTestEnv(), 'twitch', 'category-stats', { categoryId: '1' });
+    assert.equal(result.items[0].liveChannels, 3);
+    assert.equal(result.items[0].watching, 60);
+    assert.equal(result.items[0].liveChannelsComplete, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test('Kick live records use the official broadcaster profile and positive viewer count', () => {

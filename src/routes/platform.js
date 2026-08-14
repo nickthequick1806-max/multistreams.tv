@@ -14,10 +14,10 @@ export async function handlePlatformRoute(request, env, url) {
   const browseMatch = url.pathname.match(/^\/api\/browse\/(twitch|youtube|kick|rumble)$/);
   if (browseMatch && request.method === 'GET') {
     const view = url.searchParams.get('view') || 'live';
-    if (!['live', 'categories', 'clips'].includes(view)) throw new HttpError(400, 'Browse view must be live, categories, or clips.', 'invalid_browse_view');
+    if (!['live', 'categories', 'category-stats', 'clips'].includes(view)) throw new HttpError(400, 'Browse view must be live, categories, category-stats, or clips.', 'invalid_browse_view');
     return json({ ok: true, ...(await browse(env, browseMatch[1], view, {
       limit: url.searchParams.get('limit'), query: url.searchParams.get('q'), categoryId: url.searchParams.get('categoryId'), broadcasterId: url.searchParams.get('broadcasterId'),
-      channelId: url.searchParams.get('channelId'), chart: url.searchParams.get('chart')
+      channelId: url.searchParams.get('channelId'), chart: url.searchParams.get('chart'), cursor: url.searchParams.get('cursor')
     })) });
   }
   const channelMatch = url.pathname.match(/^\/api\/channel\/(twitch|youtube|kick|rumble)\/([^/]+)$/);

@@ -5176,8 +5176,8 @@ header {
 .recommended-category-copy strong,.recommended-category-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .recommended-category-copy strong { color: var(--text-main); font-size: 11px; }
 .recommended-category-copy span { margin-top: 2px; color: var(--text-muted); font-size: 9px; }
-.recommended-category-viewers { color: var(--text-main); font-size: 10px; white-space: nowrap; }
-.recommended-category-viewers::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 50%; background: #ef4444; vertical-align: 1px; }
+.recommended-category-viewers { display: inline-flex; align-items: center; gap: 4px; color: var(--text-main); font-size: 12px; white-space: nowrap; }
+.recommended-category-viewers::before { content: ''; display: block; width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; background: #ef4444; }
 .browse-header { gap: 8px; }
 .browse-header h2 { margin-right: auto; }
 .browse-status-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text-main); cursor: pointer; font: inherit; font-size: 11px; font-weight: 720; }
@@ -5225,15 +5225,18 @@ header {
 .profile-about-panel p { margin: 6px 0 0; color: var(--text-muted); font-size: 9px; line-height: 1.45; }
 .profile-about-panel-edit { position: absolute; top: 7px; right: 7px; width: 27px; height: 27px; border: 1px solid rgba(255,255,255,.24); border-radius: 7px; background: rgba(3,7,13,.82); color: #fff; cursor: pointer; }
 .private-message-shell { width: min(620px, 95vw); height: min(720px, 90vh); padding: 0; overflow: hidden; }
-.private-message-header { padding: 14px 16px; }
+.private-message-header { flex: 0 0 auto; margin-bottom: 0; padding: 14px 16px; background: var(--bg-panel); }
 .private-message-user { display: flex; align-items: center; gap: 10px; }
 .private-message-user img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; }
 .private-message-user h2 { margin: 0; font-size: 14px; }
 .private-message-user span { color: var(--text-muted); font-size: 9px; }
 .private-message-history { display: flex; flex: 1; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; padding: 18px; background: color-mix(in srgb, var(--bg-base) 82%, transparent); }
 .private-message-shell { display: flex; flex-direction: column; }
-.private-message-bubble { align-self: flex-start; max-width: 76%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 11px 11px 11px 3px; background: var(--surface-raised); }
-.private-message-bubble.outgoing { align-self: flex-end; border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 11px 11px 3px 11px; background: color-mix(in srgb, var(--accent) 14%, var(--surface-raised)); }
+.private-message-row { display: flex; width: 100%; align-items: flex-end; gap: 8px; }
+.private-message-row.outgoing { justify-content: flex-end; }
+.private-message-sender-avatar { width: 28px; height: 28px; flex: 0 0 28px; border: 1px solid var(--border); border-radius: 50%; object-fit: cover; background: var(--surface-raised); }
+.private-message-bubble { max-width: 76%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 11px 11px 11px 3px; background: var(--surface-raised); }
+.private-message-bubble.outgoing { border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 11px 11px 3px 11px; background: color-mix(in srgb, var(--accent) 14%, var(--surface-raised)); }
 .private-message-bubble p { margin: 0; color: var(--text-main); font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
 .private-message-bubble time { display: block; margin-top: 4px; color: var(--text-muted); font-size: 8px; text-align: right; }
 .private-message-compose { display: flex; gap: 9px; padding: 12px; border-top: 1px solid var(--border); }

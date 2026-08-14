@@ -130,6 +130,58 @@ async function youtubeApi(env, path, accessToken) {
   throw new HttpError(quotaLimited ? 429 : 502, quotaLimited ? 'YouTube data is temporarily using its cached results. Please try again shortly.' : `YouTube API request failed (${reason || status}).`, quotaLimited ? 'youtube_rate_limited' : 'youtube_api_error');
 }
 
+function parseYoutubeBatchResponse(body, boundary, expectedCount) {
+  const output = Array.from({ length: expectedCount }, () => null);
+  const parts = String(body || '').split(`--${boundary}`).filter(part => /HTTP\/\d(?:\.\d)?\s+\d{3}/i.test(part));
+  parts.forEach((part, position) => {
+    const contentId = part.match(/Content-ID:\s*<[^>]*?(\d+)>/i);
+    const index = contentId ? Number(contentId[1]) : position;
+    const status = Number(part.match(/HTTP\/\d(?:\.\d)?\s+(\d{3})/i)?.[1] || 0);
+    const start = part.indexOf('{');
+    const end = part.lastIndexOf('}');
+    if (index < 0 || index >= expectedCount || status < 200 || status >= 300 || start < 0 || end < start) return;
+    try { output[index] = JSON.parse(part.slice(start, end + 1)); } catch {}
+  });
+  return output;
+}
+
+async function youtubeBatchApi(env, paths, accessToken) {
+  if (!paths.length) return [];
+  const credentials = accessToken
+    ? [{ token: accessToken, key: '' }]
+    : [...new Set([env.YOUTUBE_API_KEY, env.YOUTUBE_API_KEY_FALLBACK].filter(Boolean))].map(key => ({ token: '', key }));
+  if (!credentials.length) throw new HttpError(503, 'YouTube Data API is not configured.', 'platform_not_configured');
+  let best = Array.from({ length: paths.length }, () => null);
+  for (const credential of credentials) {
+    const boundary = `multistreams_${randomId().replace(/[^a-z0-9]/gi, '')}`;
+    const keyedPaths = paths.map(path => credential.key
+      ? `${path}${path.includes('?') ? '&' : '?'}key=${encodeURIComponent(credential.key)}`
+      : path);
+    const body = `${keyedPaths.map((path, index) => [
+      `--${boundary}`,
+      'Content-Type: application/http',
+      `Content-ID: <item-${index}>`,
+      '',
+      `GET /youtube/v3${path} HTTP/1.1`,
+      'Accept: application/json',
+      '',
+      ''
+    ].join('\r\n')).join('')}--${boundary}--\r\n`;
+    const headers = { 'content-type': `multipart/mixed; boundary=${boundary}` };
+    if (credential.token) headers.authorization = `Bearer ${credential.token}`;
+    const response = await fetch('https://www.googleapis.com/batch/youtube/v3', { method: 'POST', headers, body });
+    if (response.status === 401 && accessToken) throw new HttpError(401, 'YouTube authorization expired. Reconnect YouTube to continue.', 'platform_reauthorization_required');
+    if (!response.ok) continue;
+    const responseType = response.headers.get('content-type') || '';
+    const responseBoundary = responseType.match(/boundary="?([^";]+)"?/i)?.[1];
+    if (!responseBoundary) continue;
+    const parsed = parseYoutubeBatchResponse(await response.text(), responseBoundary, paths.length);
+    if (parsed.filter(Boolean).length > best.filter(Boolean).length) best = parsed;
+    if (best.every(Boolean)) break;
+  }
+  return best;
+}
+
 async function connection(env, userId, platform) {
   return env.DB.prepare('SELECT * FROM oauth_connections WHERE user_id = ?1 AND platform = ?2').bind(userId, platform).first();
 }
@@ -213,10 +265,52 @@ async function twitchLive(env, limit = 40, categoryId = '', query = '') {
   return (payload.data || []).map(stream => normalizeTwitchStream(stream, byId.get(stream.user_id))).sort((a, b) => b.viewers - a.viewers);
 }
 
+async function twitchCategoryLiveStats(env, categoryId, maxPages = 7, startCursor = '') {
+  let cursor = startCursor;
+  let watching = 0;
+  let liveChannels = 0;
+  let complete = true;
+  for (let pageIndex = 0; pageIndex < maxPages; pageIndex += 1) {
+    const params = new URLSearchParams({ first: '100', game_id: categoryId });
+    if (cursor) params.set('after', cursor);
+    const payload = await twitchApi(env, `/streams?${params}`);
+    const streams = payload.data || [];
+    liveChannels += streams.length;
+    watching += streams.reduce((total, stream) => total + (Number(stream.viewer_count) || 0), 0);
+    cursor = String(payload.pagination?.cursor || '');
+    if (!cursor) {
+      cursor = '';
+      break;
+    }
+  }
+  if (cursor) complete = false;
+  return { watching, liveChannels, liveChannelsComplete: complete, nextCursor: cursor };
+}
+
 async function twitchCategories(env, limit = 30, query = '') {
   if (query) {
     const payload = await twitchApi(env, `/search/categories?query=${encodeURIComponent(query)}&first=${Math.min(100, limit)}`);
     return (payload.data || []).map(item => ({ id: item.id, platform: 'twitch', name: item.name, image: twitchThumbnail(item.box_art_url, 285, 380), watching: 0, followers: null, tags: [] }));
+  }
+  // The six sidebar categories get independent paginated stream counts. Twitch
+  // does not expose a category total, so this follows each category cursor
+  // directly instead of incorrectly treating the global top-100 sample as its
+  // live-channel count. The seven-page ceiling stays below the Worker free-plan
+  // subrequest limit; unusually large categories are explicitly marked partial.
+  if (limit <= 6) {
+    const top = (await twitchApi(env, `/games/top?first=${Math.max(1, limit)}`)).data || [];
+    const stats = await Promise.all(top.map(game => twitchCategoryLiveStats(env, game.id, 1)));
+    return top.map((game, index) => ({
+      id: game.id,
+      platform: 'twitch',
+      name: game.name,
+      image: twitchThumbnail(game.box_art_url, 285, 380),
+      watching: stats[index]?.watching || 0,
+      liveChannels: stats[index]?.liveChannels || 0,
+      liveChannelsComplete: stats[index]?.liveChannelsComplete !== false,
+      followers: null,
+      tags: []
+    }));
   }
   const streams = await twitchLive(env, 100);
   const aggregate = new Map();
@@ -945,12 +1039,15 @@ export async function syncYoutubeSubscriptionsForUser(env, userId) {
   row = await refreshConnection(env, row);
   const token = await connectionToken(env, row);
   const count = await syncYoutubeSubscriptions(env, row, token);
-  await cacheDelete(env, `following:youtube:v6:${userId}`);
+  await Promise.all([
+    cacheDelete(env, `following:youtube:v6:${userId}`),
+    cacheDelete(env, `following:youtube:v7:${userId}`)
+  ]);
   return { count, connected: true };
 }
 
 async function youtubeFollowing(env, row) {
-  const cacheKey = `following:youtube:v6:${row.user_id}`;
+  const cacheKey = `following:youtube:v7:${row.user_id}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   row = await refreshConnection(env, row);
@@ -962,28 +1059,49 @@ async function youtubeFollowing(env, row) {
     stored = (await env.DB.prepare('SELECT * FROM youtube_subscriptions WHERE user_id = ?1 ORDER BY channel_id').bind(row.user_id).all()).results || [];
   }
   const states = (await env.DB.prepare('SELECT * FROM youtube_live_state WHERE user_id = ?1').bind(row.user_id).all()).results || [];
-  const discoverySize = Math.min(30, stored.length);
-  const discoveryStart = stored.length > discoverySize ? (Math.floor(Date.now() / 600_000) * discoverySize) % stored.length : 0;
-  const discovery = stored.length <= discoverySize
-    ? stored
-    : [...stored.slice(discoveryStart), ...stored.slice(0, discoveryStart)].slice(0, discoverySize);
   const videoIds = states.filter(state => state.is_live && state.video_id).map(state => state.video_id);
-  for (let index = 0; index < discovery.length; index += 15) {
-    const results = await Promise.allSettled(discovery.slice(index, index + 15).filter(item => item.uploads_playlist_id).map(item =>
-      youtubeApi(env, `/playlistItems?part=contentDetails&playlistId=${encodeURIComponent(item.uploads_playlist_id)}&maxResults=2`, token)));
-    for (const result of results) if (result.status === 'fulfilled') videoIds.push(...(result.value.items || []).map(item => item.contentDetails?.videoId).filter(Boolean));
+  const checkedChannelIds = new Set();
+  let partial = false;
+  for (let index = 0; index < stored.length; index += 500) {
+    const subscriptions = stored.slice(index, index + 500).filter(item => item.uploads_playlist_id);
+    let payloads;
+    try {
+      payloads = await youtubeBatchApi(env, subscriptions.map(item =>
+        `/playlistItems?part=contentDetails&playlistId=${encodeURIComponent(item.uploads_playlist_id)}&maxResults=3`));
+    } catch (error) {
+      if (error?.code === 'platform_reauthorization_required') throw error;
+      partial = true;
+      continue;
+    }
+    payloads.forEach((payload, payloadIndex) => {
+      const subscription = subscriptions[payloadIndex];
+      if (!payload || !subscription) {
+        partial = true;
+        return;
+      }
+      checkedChannelIds.add(subscription.channel_id);
+      videoIds.push(...(payload.items || []).map(item => item.contentDetails?.videoId).filter(Boolean));
+    });
   }
-  const videos = [];
+  if (stored.some(item => !item.uploads_playlist_id)) partial = true;
   const uniqueVideoIds = [...new Set(videoIds)];
-  for (let index = 0; index < uniqueVideoIds.length; index += 50) videos.push(...await youtubeVideoDetails(env, uniqueVideoIds.slice(index, index + 50), token));
+  const detailPaths = [];
+  for (let index = 0; index < uniqueVideoIds.length; index += 50) {
+    detailPaths.push(`/videos?part=snippet,statistics,contentDetails,liveStreamingDetails,status&id=${encodeURIComponent(uniqueVideoIds.slice(index, index + 50).join(','))}`);
+  }
+  const detailPayloads = await youtubeBatchApi(env, detailPaths);
+  if (detailPayloads.some(payload => !payload)) partial = true;
+  const videos = detailPayloads.flatMap(payload => payload?.items || []);
   const byId = new Map(stored.map(channel => [channel.channel_id, { id: channel.channel_id, snippet: { title: channel.channel_title, thumbnails: { high: { url: channel.avatar_url } } } }]));
-  const streams = videos.map(video => normalizeYoutubeVideo(video, byId.get(video.snippet?.channelId)))
+  const streams = videos.map(video => normalizeYoutubeVideo(video, byId.get(video.snippet?.channelId), YOUTUBE_CATEGORY_NAMES))
     .filter(video => video.live).sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0));
-  const activeByChannel = new Map(streams.map(stream => [stream.channelId, stream]));
+  const activeByChannel = new Map();
+  for (const stream of streams) if (!activeByChannel.has(stream.channelId)) activeByChannel.set(stream.channelId, stream);
+  const liveStreams = [...activeByChannel.values()].sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0));
   const timestamp = nowIso();
   const previousByChannel = new Map(states.map(state => [state.channel_id, state]));
   const statements = [];
-  const channelsToUpdate = new Map(discovery.map(subscription => [subscription.channel_id, subscription]));
+  const channelsToUpdate = new Map(stored.filter(subscription => checkedChannelIds.has(subscription.channel_id)).map(subscription => [subscription.channel_id, subscription]));
   for (const state of states.filter(state => state.is_live)) {
     const subscription = stored.find(item => item.channel_id === state.channel_id);
     if (subscription) channelsToUpdate.set(subscription.channel_id, subscription);
@@ -1005,7 +1123,7 @@ async function youtubeFollowing(env, row) {
       }), timestamp));
   }
   if (statements.length) await runBatches(env, statements);
-  const result = { streams, checkedSubscriptions: stored.length, totalSubscriptions: stored.length, partial: false };
+  const result = { streams: liveStreams, checkedSubscriptions: checkedChannelIds.size, totalSubscriptions: stored.length, partial };
   return cachePut(env, cacheKey, result, 600);
 }
 
@@ -1073,6 +1191,12 @@ export async function followingLive(request, env) {
       }
       else platformStatus[row.platform] = { connected: true, count: 0, complete: false, note: PLATFORM_CAPABILITIES[row.platform]?.followsNote || 'Following data is unavailable.' };
     } catch (error) {
+      console.warn('Following provider refresh failed.', {
+        platform: row.platform,
+        code: error?.code || 'provider_error',
+        status: Number(error?.status || 0),
+        message: String(error?.message || 'Unknown provider error').slice(0, 200)
+      });
       platformStatus[row.platform] = { connected: true, count: 0, complete: false, error: error.message };
     }
   }
@@ -1086,12 +1210,17 @@ export async function browse(env, platform, view, options = {}) {
   const categoryId = String(options.categoryId || '').trim();
   const channelId = String(options.channelId || '').trim();
   const chart = String(options.chart || '').trim();
-  const cacheKey = `browse:v8:${platform}:${view}:${limit}:${categoryId}:${channelId}:${chart}:${query.toLowerCase()}`;
+  const cursor = String(options.cursor || '').trim();
+  const cacheKey = `browse:v10:${platform}:${view}:${limit}:${categoryId}:${channelId}:${chart}:${cursor}:${query.toLowerCase()}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   let items;
   if (platform === 'twitch' && view === 'live') items = await twitchLive(env, limit, categoryId, query);
   else if (platform === 'twitch' && view === 'categories') items = await twitchCategories(env, limit, query);
+  else if (platform === 'twitch' && view === 'category-stats') {
+    if (!categoryId) throw new HttpError(400, 'A Twitch category id is required.', 'category_id_required');
+    items = [{ id: categoryId, ...(await twitchCategoryLiveStats(env, categoryId, 40, cursor)) }];
+  }
   else if (platform === 'twitch' && view === 'clips') items = await twitchClips(env, limit, categoryId, options.broadcasterId);
   else if (platform === 'youtube' && view === 'live') items = await youtubeSearchVideos(env, { limit, query, live: true, categoryId });
   else if (platform === 'youtube' && view === 'categories') items = await youtubeCategories(env, limit, query);
@@ -1331,4 +1460,4 @@ export async function globalSearch(env, query, limit = 20) {
   return results;
 }
 
-export { PLATFORM_CAPABILITIES, channelDetail, isCreatorYoutubeLivePayload, normalizeKickChannel, normalizeKickLive };
+export { PLATFORM_CAPABILITIES, channelDetail, isCreatorYoutubeLivePayload, normalizeKickChannel, normalizeKickLive, normalizeYoutubeVideo, parseYoutubeBatchResponse };

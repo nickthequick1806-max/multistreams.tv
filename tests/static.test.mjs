@@ -107,6 +107,9 @@ test('production UI fixes remain wired to backend-normalized data', () => {
   assert.match(backendClient, /function sortSidebarItems/);
   assert.match(backendClient, /window\.toggleSort = \(\) =>/);
   assert.match(backendClient, /sortSidebarItems\(real\.recommendedCategories, item => item\.watching\)/);
+  assert.match(backendClient, /view=category-stats&categoryId=/);
+  assert.match(platforms, /twitchCategoryLiveStats\(env, categoryId, 40, cursor\)/);
+  assert.match(backendClient, /async function loadCompleteCategoryStats/);
   assert.match(html, /\.profile-about-social-icon svg/);
   assert.match(backendClient, /getPlatformIcon\(String\(platform\)\.toLowerCase\(\)\)/);
   assert.match(html, /id="profile-panel-delete"[^>]*profile-panel-delete-button[^>]*aria-label="Remove about panel"/);
@@ -121,7 +124,11 @@ test('OAuth, AI recovery, YouTube data fallbacks, and share routes have regressi
   assert.match(aiRoute, /Do not emit or call any function/);
   assert.match(platforms, /\/subscriptions\?part=snippet&mine=true&maxResults=50&order=alphabetical/);
   assert.match(platforms, /while \(pageToken\)/);
-  assert.match(platforms, /const discoverySize = Math\.min\(30, stored\.length\)/);
+  assert.match(platforms, /async function youtubeBatchApi/);
+  assert.match(platforms, /for \(let index = 0; index < stored\.length; index \+= 500\)/);
+  assert.match(platforms, /const detailPayloads = await youtubeBatchApi\(env, detailPaths\)/);
+  assert.match(platforms, /checkedSubscriptions: checkedChannelIds\.size/);
+  assert.doesNotMatch(platforms, /const discoverySize = Math\.min\(30, stored\.length\)/);
   assert.doesNotMatch(platforms, /slice\.map\(channelId => youtubeSearchVideos/);
   assert.match(platforms, /forHandle=/);
   assert.match(platforms, /if \(live && error\?\.code === 'youtube_rate_limited' && env\.SCRAPECREATORS_API_KEY\)/);
@@ -151,7 +158,7 @@ test('OAuth, AI recovery, YouTube data fallbacks, and share routes have regressi
   assert.match(platforms, /if \(!isCreatorYoutubeLivePayload\(payload\)\) return null/);
   assert.doesNotMatch(platforms, /item\.concurrentViewersText \|\| item\.viewCountText/);
   assert.match(platforms, /creator:youtube:live:v3/);
-  assert.match(platforms, /browse:v8/);
+  assert.match(platforms, /browse:v10/);
   assert.match(platforms, /categoryName \? `\$\{categoryName\} live`/);
   assert.match(platforms, /const streams = requestedVideo\s*\?\s*\(requestedVideo\.live \? \[requestedVideo\] : \[\]\)/);
   assert.match(platforms, /SCRAPECREATORS_API_KEY && error\?\.code === 'youtube_rate_limited'/);
@@ -171,6 +178,11 @@ test('OAuth, AI recovery, YouTube data fallbacks, and share routes have regressi
   assert.match(platforms, /_liveResult: true/);
   assert.match(backendClient, /function balanceSidebarPlatforms/);
   assert.match(backendClient, /balanceSidebarPlatforms\(real\.featured, item => item\.viewers\)/);
+  assert.match(backendClient, /apiWithShortRetry\('\/api\/featured\?limit=20'\)/);
+  assert.match(backendClient, /sessionStorage\.setItem\(SIDEBAR_LIVE_CACHE_KEY/);
+  assert.match(backendClient, /class="private-message-sender-avatar"/);
+  assert.match(html, /\.private-message-header \{[^}]*margin-bottom: 0;/);
+  assert.match(html, /\.recommended-category-viewers \{[^}]*font-size: 12px;/);
   assert.match(html, /\.sidebar-show-toggle \{[^}]*color: var\(--accent\);/);
   assert.match(html, /\.suggested-name-row \{[^}]*width: fit-content;/);
   assert.match(html, /\.profile-media-grid > \.browse-clip-grid \{[^}]*grid-template-columns: repeat\(4,/);
