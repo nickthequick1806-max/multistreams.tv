@@ -10,6 +10,11 @@ const oauthRoute = await readFile(new URL('../src/routes/oauth.js', import.meta.
 const aiRoute = await readFile(new URL('../src/routes/ai.js', import.meta.url), 'utf8');
 const platforms = await readFile(new URL('../src/platforms.js', import.meta.url), 'utf8');
 const thirdPartyRoute = await readFile(new URL('../src/routes/third-party.js', import.meta.url), 'utf8');
+const profileRoute = await readFile(new URL('../src/routes/profile.js', import.meta.url), 'utf8');
+const authRoute = await readFile(new URL('../src/routes/auth.js', import.meta.url), 'utf8');
+const messageRoute = await readFile(new URL('../src/routes/messages.js', import.meta.url), 'utf8');
+const statusRoute = await readFile(new URL('../src/routes/status.js', import.meta.url), 'utf8');
+const socialMigration = await readFile(new URL('../migrations/0003_social_messaging_youtube.sql', import.meta.url), 'utf8');
 const worker = await readFile(new URL('../src/index.js', import.meta.url), 'utf8');
 const wrangler = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
 
@@ -45,6 +50,23 @@ test('YouTube account connection reuses the Google profile OAuth entry point', (
   assert.match(oauthRoute, /destination\.searchParams\.set\('oauth', connectedPlatform\)/);
   assert.match(oauthRoute, /await saveConnection\(env, result\.user\.id, 'youtube'/);
   assert.match(oauthRoute, /return OAUTH\.youtube\.scopes/);
+  assert.match(oauthRoute, /pendingConnection = await encrypt/);
+  assert.match(authRoute, /await saveConnection\(env, challenge\.user_id, 'youtube'/);
+  assert.doesNotMatch(html, /accounts\.google\.com\/gsi\/client|initTokenClient|response\.access_token/);
+});
+
+test('social messaging, notification history, profile panels, and status routes are wired', () => {
+  assert.match(messageRoute, /INSERT INTO direct_messages/);
+  assert.match(messageRoute, /Messaging is unavailable because one of these profiles is blocked/);
+  assert.match(socialMigration, /CREATE TABLE IF NOT EXISTS conversations/);
+  assert.match(socialMigration, /CREATE TABLE IF NOT EXISTS profile_panels/);
+  assert.match(profileRoute, /\/api\/profile\/panels\/reorder/);
+  assert.match(backendClient, /loadBackendNotifications\(\{ announce: true \}\)/);
+  assert.match(backendClient, /backendNotificationId/);
+  assert.match(html, /formatRelativeNotificationTime/);
+  assert.match(html, /dark_theme=true/);
+  assert.match(statusRoute, /UPTIMEROBOT_API_KEY/);
+  assert.match(worker, /shared_layout_banner\.png/);
 });
 
 test('production UI fixes remain wired to backend-normalized data', () => {
@@ -63,6 +85,12 @@ test('production UI fixes remain wired to backend-normalized data', () => {
   assert.match(html, /function pruneDeletedLiveNotifications/);
   assert.match(html, /loadLiveNotifications\(\);\s*calculateNotificationCounts/);
   assert.doesNotMatch(html, /mockLiveStreamers = \[\];\s*deletedLiveNotifications = \[\]/);
+  assert.match(html, /oninput="searchPrivacyBlockProfiles\(this\.value\)"/);
+  assert.match(html, /id="privacy-block-search-results"/);
+  assert.match(backendClient, /\/api\/profiles\?q=\$\{encodeURIComponent\(value\)\}/);
+  assert.match(backendClient, /\/api\/profiles\/\$\{encodeURIComponent\(username\)\}\/block/);
+  assert.match(backendClient, /async function loadBlockedProfiles/);
+  assert.match(profileRoute, /SELECT u\.username, u\.avatar_url, u\.banner_url, u\.bio FROM profile_blocks/);
 });
 
 test('OAuth, AI recovery, YouTube data fallbacks, and share routes have regressions covered', () => {
@@ -70,7 +98,9 @@ test('OAuth, AI recovery, YouTube data fallbacks, and share routes have regressi
   assert.match(backendClient, /\/api\/oauth\/twitch\/callback\?\$\{oauthRelayParams\.toString\(\)\}/);
   assert.match(aiRoute, /MALFORMED_FUNCTION_CALL/);
   assert.match(aiRoute, /Do not emit or call any function/);
-  assert.match(platforms, /\/activities\?part=snippet,contentDetails&home=true&maxResults=50/);
+  assert.match(platforms, /\/subscriptions\?part=snippet&mine=true&maxResults=50&order=alphabetical/);
+  assert.match(platforms, /while \(pageToken\)/);
+  assert.match(platforms, /const discoverySize = Math\.min\(30, stored\.length\)/);
   assert.doesNotMatch(platforms, /slice\.map\(channelId => youtubeSearchVideos/);
   assert.match(platforms, /forHandle=/);
   assert.match(platforms, /if \(live && error\?\.code === 'youtube_rate_limited' && env\.SCRAPECREATORS_API_KEY\)/);
@@ -96,6 +126,11 @@ test('OAuth, AI recovery, YouTube data fallbacks, and share routes have regressi
   assert.match(platforms, /recordedDurationSeconds/);
   assert.match(platforms, /async function youtubeCreatorLiveFallback/);
   assert.match(platforms, /async function youtubeCreatorChannelDetail/);
+  assert.match(platforms, /async function verifyCreatorYoutubeLiveCandidates/);
+  assert.match(platforms, /if \(!isCreatorYoutubeLivePayload\(payload\)\) return null/);
+  assert.doesNotMatch(platforms, /item\.concurrentViewersText \|\| item\.viewCountText/);
+  assert.match(platforms, /creator:youtube:live:v3/);
+  assert.match(platforms, /browse:v8/);
   assert.match(platforms, /categoryName \? `\$\{categoryName\} live`/);
   assert.match(platforms, /const streams = requestedVideo\s*\?\s*\(requestedVideo\.live \? \[requestedVideo\] : \[\]\)/);
   assert.match(platforms, /SCRAPECREATORS_API_KEY && error\?\.code === 'youtube_rate_limited'/);

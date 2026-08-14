@@ -4552,9 +4552,20 @@ header {
 .privacy-block-card { margin-top: 13px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-soft); }
 .privacy-block-card h4 { margin: 0; color: var(--text-main); font-size: 13px; }
 .privacy-block-card > p { margin: 5px 0 12px; color: var(--text-muted); font-size: 10px; line-height: 1.45; }
-.privacy-block-input-row { display: flex; align-items: center; gap: 8px; }
-.privacy-block-input-row input { min-width: 0; min-height: 40px; flex: 1; padding: 8px 11px; }
-.privacy-block-input-row button { min-width: 82px; min-height: 40px; }
+.privacy-block-search-shell { position: relative; }
+.privacy-block-input-row { position: relative; display: flex; align-items: center; }
+.privacy-block-input-row > i { position: absolute; left: 12px; z-index: 1; color: var(--text-muted); font-size: 11px; pointer-events: none; }
+.privacy-block-input-row input { width: 100%; min-width: 0; min-height: 42px; padding: 9px 38px 9px 34px; }
+.privacy-block-search-spinner { position: absolute; right: 12px; display: none; width: 14px; height: 14px; border: 2px solid color-mix(in srgb, var(--text-muted) 35%, transparent); border-top-color: var(--accent); border-radius: 50%; animation: spin .72s linear infinite; }
+.privacy-block-search-shell.is-loading .privacy-block-search-spinner { display: block; }
+.privacy-block-search-results { display: none; max-height: 230px; margin-top: 8px; overflow-y: auto; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); box-shadow: 0 16px 32px rgba(0,0,0,.28); }
+.privacy-block-search-results.active { display: flex; flex-direction: column; gap: 5px; padding: 6px; animation: profile-search-in .18s ease both; }
+.privacy-block-search-card { position: relative; display: flex; width: 100%; min-height: 58px; align-items: center; gap: 10px; overflow: hidden; padding: 8px 10px; border: 1px solid var(--border); border-radius: 8px; background-color: var(--surface-soft); background-position: center; background-size: cover; color: var(--text-main); cursor: pointer; text-align: left; isolation: isolate; }
+.privacy-block-search-card::before { content: ""; position: absolute; inset: 0; z-index: -1; background: linear-gradient(90deg, color-mix(in srgb, var(--surface-raised) 96%, transparent) 0%, color-mix(in srgb, var(--surface-raised) 86%, transparent) 70%, color-mix(in srgb, var(--surface-raised) 72%, transparent) 100%); }
+.privacy-block-search-card:hover { border-color: color-mix(in srgb, #fb7185 55%, var(--border)); transform: translateY(-1px); }
+.privacy-block-search-card .privacy-blocked-avatar { width: 38px; height: 38px; flex-basis: 38px; }
+.privacy-block-search-action { margin-left: auto; color: #fb7185; font-size: 10px; }
+.privacy-block-search-empty { padding: 14px 10px; color: var(--text-muted); font-size: 9px; line-height: 1.45; text-align: center; }
 .privacy-blocked-heading { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 15px 0 8px; color: var(--text-main); font-size: 10px; font-weight: 780; }
 .privacy-blocked-heading span:last-child { color: var(--text-muted); font-size: 8px; }
 .privacy-blocked-list { display: flex; flex-direction: column; gap: 7px; }
@@ -5149,8 +5160,111 @@ header {
   .global-search-spinner, #notificationsMenu, #profileMenu, #layoutMenu.layout-quick-menu,
   .collectible-card-tilt-stage, .ai-search-floating-platform { animation: none !important; transition: none !important; }
 }
+/* Production social, messaging, status, and sidebar refinements */
+.notification-menu-card { position: relative; padding-bottom: 28px; }
+.notification-relative-time { position: absolute; right: 12px; bottom: 9px; color: var(--text-muted); font-size: 9px; font-weight: 650; }
+.notification-menu-card.is-unread { border-left: 2px solid var(--accent); }
+#notificationsMenu > div:nth-child(2) { gap: 8px !important; justify-content: space-evenly !important; }
+#notificationsMenu > div:nth-child(2) > div { padding-inline: 10px !important; }
+.sidebar-show-toggle { display: inline-flex; margin: 5px 8px 7px; padding: 3px 0; border: 0; background: transparent; color: #a78bfa; cursor: pointer; font: inherit; font-size: 11px; font-weight: 720; }
+.sidebar-show-toggle:hover { color: var(--accent); }
+.recommended-category { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
+.recommended-category:hover { background: var(--bg-hover); }
+.recommended-category img { width: 30px; height: 40px; border-radius: 4px; object-fit: cover; background: var(--surface-raised); }
+.recommended-category-copy { min-width: 0; flex: 1; }
+.recommended-category-copy strong,.recommended-category-copy span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.recommended-category-copy strong { color: var(--text-main); font-size: 11px; }
+.recommended-category-copy span { margin-top: 2px; color: var(--text-muted); font-size: 9px; }
+.recommended-category-viewers { color: var(--text-main); font-size: 10px; white-space: nowrap; }
+.recommended-category-viewers::before { content: ''; display: inline-block; width: 6px; height: 6px; margin-right: 4px; border-radius: 50%; background: #ef4444; vertical-align: 1px; }
+.browse-header { gap: 8px; }
+.browse-header h2 { margin-right: auto; }
+.browse-status-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text-main); cursor: pointer; font: inherit; font-size: 11px; font-weight: 720; }
+.service-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.12); }
+.profile-more-control { position: relative; }
+.profile-more-menu { position: absolute; z-index: 20; top: calc(100% + 7px); left: 0; display: none; width: 160px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); box-shadow: 0 16px 38px rgba(0,0,0,.38); }
+.profile-more-menu.active { display: grid; gap: 3px; }
+.profile-more-menu button { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text-main); cursor: pointer; font: inherit; font-size: 11px; text-align: left; }
+.profile-more-menu button:hover { background: var(--bg-hover); }
+.profile-more-menu button:last-child { color: #fb7185; }
+.profile-message-button { position: absolute; z-index: 5; top: 14px; right: 14px; display: inline-flex; width: 36px; height: 36px; align-items: center; justify-content: center; border: 1px solid rgba(255,255,255,.24); border-radius: 9px; background: rgba(4,9,17,.72); color: #fff; backdrop-filter: blur(12px); cursor: pointer; }
+.profile-message-button:hover { border-color: var(--accent); color: var(--accent); }
+.profile-stats { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 5px; }
+.profile-stats button { padding: 0; border: 0; background: none; color: var(--text-muted); cursor: pointer; font: inherit; font-size: 10px; }
+.profile-stats button:hover { color: var(--accent); }
+.profile-stats strong { color: var(--text-main); font-size: 11px; }
+.profile-badges-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.profile-badges-heading strong { font-size: 12px; }
+.profile-badges-heading .profile-watch-summary { margin: 0; color: var(--text-muted); font-size: 10px; }
+.profile-media-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+.profile-media-card { overflow: hidden; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); color: inherit; cursor: pointer; text-align: left; }
+.profile-media-thumb { position: relative; aspect-ratio: 16/9; background: #080b11; }
+.profile-media-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.profile-media-platform { position: absolute; right: 6px; bottom: 6px; display: inline-flex; width: 22px; height: 22px; align-items: center; justify-content: center; border-radius: 6px; background: rgba(2,5,10,.82); }
+.profile-media-copy { padding: 9px; }
+.profile-media-copy strong { display: -webkit-box; overflow: hidden; color: var(--text-main); font-size: 10px; line-height: 1.35; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
+.profile-media-copy span { display: block; margin-top: 5px; color: var(--text-muted); font-size: 9px; }
+.profile-about-summary { padding: 16px; border: 1px solid var(--border); border-radius: 11px; background: var(--surface-raised); }
+.profile-about-summary h3 { margin: 0 0 9px; font-size: 14px; }
+.profile-about-summary p { margin: 8px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.55; }
+.profile-about-socials { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
+.profile-about-socials a { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; color: var(--text-main); font-size: 9px; text-decoration: none; }
+.profile-about-toolbar { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 10px; }
+.profile-about-toolbar strong { font-size: 12px; }
+.profile-about-panels { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 11px; }
+.profile-about-panel { position: relative; overflow: hidden; min-height: 120px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); }
+.profile-about-panel img { width: 100%; aspect-ratio: 3/1; object-fit: cover; }
+.profile-about-panel-copy { padding: 10px; }
+.profile-about-panel h4 { margin: 0; color: var(--text-main); font-size: 11px; }
+.profile-about-panel p { margin: 6px 0 0; color: var(--text-muted); font-size: 9px; line-height: 1.45; }
+.profile-about-panel-edit { position: absolute; top: 7px; right: 7px; width: 27px; height: 27px; border: 1px solid rgba(255,255,255,.24); border-radius: 7px; background: rgba(3,7,13,.82); color: #fff; cursor: pointer; }
+.private-message-shell { width: min(620px, 95vw); height: min(720px, 90vh); padding: 0; overflow: hidden; }
+.private-message-header { padding: 14px 16px; }
+.private-message-user { display: flex; align-items: center; gap: 10px; }
+.private-message-user img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; }
+.private-message-user h2 { margin: 0; font-size: 14px; }
+.private-message-user span { color: var(--text-muted); font-size: 9px; }
+.private-message-history { display: flex; flex: 1; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; padding: 18px; background: color-mix(in srgb, var(--bg-base) 82%, transparent); }
+.private-message-shell { display: flex; flex-direction: column; }
+.private-message-bubble { align-self: flex-start; max-width: 76%; padding: 9px 11px; border: 1px solid var(--border); border-radius: 11px 11px 11px 3px; background: var(--surface-raised); }
+.private-message-bubble.outgoing { align-self: flex-end; border-color: color-mix(in srgb, var(--accent) 45%, var(--border)); border-radius: 11px 11px 3px 11px; background: color-mix(in srgb, var(--accent) 14%, var(--surface-raised)); }
+.private-message-bubble p { margin: 0; color: var(--text-main); font-size: 11px; line-height: 1.5; white-space: pre-wrap; word-break: break-word; }
+.private-message-bubble time { display: block; margin-top: 4px; color: var(--text-muted); font-size: 8px; text-align: right; }
+.private-message-compose { display: flex; gap: 9px; padding: 12px; border-top: 1px solid var(--border); }
+.private-message-compose textarea { flex: 1; resize: none; min-height: 38px; max-height: 100px; padding: 9px 11px; }
+.profile-user-list-shell { width: min(520px, 94vw); max-height: 80vh; padding: 0; overflow: hidden; }
+.profile-user-list { display: grid; gap: 7px; overflow-y: auto; max-height: 62vh; padding: 12px; }
+.profile-user-list-card { display: flex; align-items: center; gap: 10px; padding: 9px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-soft); color: var(--text-main); cursor: pointer; text-align: left; }
+.profile-user-list-card img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; }
+.profile-user-list-card strong { font-size: 11px; }
+.profile-panel-editor-shell { display: grid; width: min(470px, 94vw); gap: 10px; }
+.profile-panel-editor-shell label { display: grid; gap: 5px; color: var(--text-main); font-size: 10px; font-weight: 700; }
+.profile-panel-editor-shell input,.profile-panel-editor-shell textarea { width: 100%; padding: 9px 10px; resize: vertical; }
+.profile-panel-editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.profile-panel-editor-actions .danger { margin-right: auto; color: #fb7185; }
+.service-status-shell { width: min(900px, 95vw); max-height: 88vh; padding: 0; overflow: hidden; }
+.service-status-header p { margin: 4px 0 0; color: var(--text-muted); font-size: 9px; }
+.service-status-content { display: grid; gap: 12px; overflow-y: auto; max-height: 72vh; padding: 16px; }
+.service-status-overall { display: flex; align-items: center; gap: 12px; padding: 15px; border: 1px solid rgba(34,197,94,.35); border-radius: 11px; background: rgba(34,197,94,.08); }
+.service-status-overall i { color: #4ade80; font-size: 22px; }
+.service-status-overall strong,.service-status-overall span { display: block; }
+.service-status-overall strong { font-size: 13px; }
+.service-status-overall span { margin-top: 3px; color: var(--text-muted); font-size: 9px; }
+.service-status-row { display: grid; grid-template-columns: minmax(150px,1.5fr) 90px 100px 90px; gap: 10px; align-items: center; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.service-status-row strong { font-size: 10px; }
+.service-status-row span { color: var(--text-muted); font-size: 9px; }
+.service-status-state { color: #4ade80 !important; font-weight: 760; text-transform: capitalize; }
+.service-status-loading { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 180px; color: var(--text-muted); font-size: 11px; }
+@media (max-width: 760px) {
+  .profile-directory-search { min-width: 0; width: 42vw; }
+  .profile-tabs { gap: 4px; overflow-x: auto; }
+  .profile-tab-button { flex: 0 0 auto; }
+  .profile-media-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .profile-about-panels { grid-template-columns: 1fr; }
+  .service-status-row { grid-template-columns: 1fr 1fr; }
+  .private-message-shell { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+}
 </style>
-<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -5318,6 +5432,11 @@ header {
        style="padding: 12px 20px; cursor: pointer; font-weight: 600; color: var(--text-muted); font-size: 14px;">
     Updates
   </div>
+
+  <div onclick="switchNotificationTab('messages')" id="tab-messages"
+       style="padding: 12px 20px; cursor: pointer; font-weight: 600; color: var(--text-muted); font-size: 14px;">
+    Messages
+  </div>
   
 </div>
 
@@ -5460,10 +5579,17 @@ header {
         Sign in via profile menu to fetch live channels.
       </div>
     </div>
+    <button id="followed-show-toggle" class="sidebar-show-toggle" type="button" onclick="toggleSidebarSection('following')" hidden>Show More</button>
     
-    <div class="sidebar-header" style="margin-top: 8px;">FEATURED</div>
+    <div class="sidebar-header" style="margin-top: 8px;">LIVE CHANNELS</div>
     <div class="sidebar-divider"></div>
     <div id="featured-list"></div>
+    <button id="featured-show-toggle" class="sidebar-show-toggle" type="button" onclick="toggleSidebarSection('featured')" hidden>Show More</button>
+
+    <div class="sidebar-header" style="margin-top: 12px;">RECOMMENDED CATEGORIES</div>
+    <div class="sidebar-divider"></div>
+    <div id="recommended-category-list"></div>
+    <button id="categories-show-toggle" class="sidebar-show-toggle" type="button" onclick="toggleSidebarSection('categories')" hidden>Show More</button>
     
   </div>
 
@@ -5995,8 +6121,11 @@ header {
             </div>
             <div class="privacy-block-card">
               <h4>Block Profiles</h4>
-              <p>Blocked users cannot view your profile. Enter an exact profile username below.</p>
-              <div class="privacy-block-input-row"><input id="privacy-block-username" type="text" placeholder="Enter profile username" autocomplete="off" onkeydown="if(event.key === 'Enter'){ event.preventDefault(); blockProfileFromPrivacy(); }"><button type="button" class="primary-btn" onclick="blockProfileFromPrivacy()"><i class="fa-solid fa-ban" style="margin-right:5px;" aria-hidden="true"></i>Block</button></div>
+              <p>Search for a profile, then select its profile card to block that user.</p>
+              <div class="privacy-block-search-shell" id="privacy-block-search-shell">
+                <div class="privacy-block-input-row"><i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i><input id="privacy-block-username" type="search" placeholder="Search profiles to block" autocomplete="off" aria-label="Search profiles to block" aria-expanded="false" aria-controls="privacy-block-search-results" oninput="searchPrivacyBlockProfiles(this.value)" onfocus="searchPrivacyBlockProfiles(this.value)"><span class="privacy-block-search-spinner" aria-hidden="true"></span></div>
+                <div id="privacy-block-search-results" class="privacy-block-search-results" role="listbox" aria-label="Profiles available to block"></div>
+              </div>
               <div class="privacy-blocked-heading"><span>Blocked Users</span><span id="privacy-blocked-count">0 blocked</span></div>
               <div id="privacy-blocked-list" class="privacy-blocked-list"></div>
             </div>
@@ -6188,9 +6317,9 @@ header {
   <div class="modal-content profile-modal-shell" onclick="event.stopPropagation()">
     <div class="modal-header profile-modal-header">
       <div class="profile-modal-heading"><i class="fa-regular fa-circle-user" aria-hidden="true"></i><h2 id="my-profile-title">My Profile</h2></div>
-      <div class="profile-followed-control" onclick="event.stopPropagation()">
-        <button id="profile-followed-toggle" class="icon-btn profile-followed-toggle" type="button" onclick="toggleFollowedUsersPanel(event)" aria-label="Open followed users" aria-expanded="false" aria-controls="profile-followed-panel"><i class="fa-solid fa-heart" aria-hidden="true"></i></button>
-        <div id="profile-followed-panel" class="profile-followed-panel" aria-label="Followed Users"></div>
+      <div class="profile-more-control" onclick="event.stopPropagation()">
+        <button id="profile-more-toggle" class="icon-btn" type="button" onclick="toggleProfileMoreMenu(event)" aria-label="Profile actions" aria-expanded="false"><i class="fa-solid fa-ellipsis-vertical" aria-hidden="true"></i></button>
+        <div id="profile-more-menu" class="profile-more-menu"><button type="button" onclick="reportViewedProfile()"><i class="fa-regular fa-flag"></i>Report User</button><button type="button" onclick="blockViewedProfile()"><i class="fa-solid fa-user-slash"></i>Block User</button></div>
       </div>
       <div class="profile-directory-search" onclick="event.stopPropagation()">
         <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>
@@ -6208,11 +6337,12 @@ header {
       <div id="profile-access-overlay" class="profile-access-overlay" hidden><div class="profile-access-card"><i id="profile-access-icon" class="fa-solid fa-user-lock" aria-hidden="true"></i><strong id="profile-access-title">Profile unavailable</strong><span id="profile-access-message"></span></div></div>
       <section class="profile-hero">
         <div id="my-profile-banner" class="profile-banner"></div>
+        <button id="profile-message-button" class="profile-message-button" type="button" onclick="openViewedProfileConversation()" aria-label="Send private message" hidden><i class="fa-regular fa-message"></i></button>
         <div class="profile-identity">
           <div id="my-profile-avatar" class="profile-large-avatar"></div>
           <div class="profile-identity-copy">
             <div class="profile-username-row"><h2 id="my-profile-username">User123</h2><span id="my-profile-verified-badge" class="profile-verified-badge" data-tooltip="Verified User - 10K Watch Hours" aria-label="Verified User - 10K Watch Hours" tabindex="0" hidden><i class="fa-solid fa-circle-check" aria-hidden="true"></i></span></div>
-            <div id="my-profile-watch-summary" class="profile-watch-summary">0 minutes watched</div>
+            <div id="my-profile-stats" class="profile-stats"><button type="button" data-profile-stat="layouts"><strong>0</strong> layouts</button><button type="button" data-profile-stat="followers" onclick="openProfileUserList('followers')"><strong>0</strong> followers</button><button type="button" data-profile-stat="following" onclick="openProfileUserList('following')"><strong>0</strong> following</button></div>
             <div id="my-profile-earned-inline" class="profile-earned-inline"></div>
             <p id="my-profile-bio" class="profile-bio" hidden></p>
           </div>
@@ -6227,17 +6357,52 @@ header {
         <div class="profile-tabs" role="tablist" aria-label="Profile sections">
           <button id="profile-tab-layouts" class="profile-tab-button active" onclick="switchProfileTab('layouts')" role="tab">Shared Layouts</button>
           <button id="profile-tab-badges" class="profile-tab-button" onclick="switchProfileTab('badges')" role="tab">Badges</button>
+          <button id="profile-tab-clips" class="profile-tab-button" onclick="switchProfileTab('clips')" role="tab" hidden>Clips</button>
+          <button id="profile-tab-videos" class="profile-tab-button" onclick="switchProfileTab('videos')" role="tab" hidden>Videos</button>
+          <button id="profile-tab-about" class="profile-tab-button" onclick="switchProfileTab('about')" role="tab">About</button>
         </div>
         <div id="profile-content-layouts" class="profile-tab-content active">
           <div class="profile-layout-toolbar"><div><strong style="font-size:13px;">Your shared layouts</strong><div style="margin-top:3px;color:var(--text-muted);font-size:10px;">Add a Multistreams share link to showcase it here.</div></div><button class="primary-btn" onclick="openProfileLayoutAddModal()"><i class="fa-solid fa-plus" style="margin-right:6px;"></i>Share Layout</button></div>
           <div id="profile-layout-grid" class="profile-layout-grid"></div>
         </div>
         <div id="profile-content-badges" class="profile-tab-content">
+          <div class="profile-badges-heading"><strong>Watch-time badges</strong><span id="my-profile-watch-summary">0 minutes watched</span></div>
           <div id="watch-badge-grid" class="watch-badge-grid"></div>
+        </div>
+        <div id="profile-content-clips" class="profile-tab-content"><div id="profile-clips-grid" class="profile-media-grid"></div></div>
+        <div id="profile-content-videos" class="profile-tab-content"><div id="profile-videos-grid" class="profile-media-grid"></div></div>
+        <div id="profile-content-about" class="profile-tab-content">
+          <div id="profile-about-summary" class="profile-about-summary"></div>
+          <div class="profile-about-toolbar"><strong>About panels</strong><button id="profile-add-panel-button" class="primary-btn" type="button" onclick="openProfilePanelEditor()"><i class="fa-solid fa-plus"></i>Add Panel</button></div>
+          <div id="profile-about-panels" class="profile-about-panels"></div>
         </div>
       </section>
     </div>
   </div>
+</div>
+
+<!-- PRIVATE MESSAGES -->
+<div id="private-message-modal" class="modal-overlay" onclick="closePrivateMessageModal(event)" role="dialog" aria-modal="true" aria-labelledby="private-message-title">
+  <div class="modal-content private-message-shell" onclick="event.stopPropagation()">
+    <div class="modal-header private-message-header"><div class="private-message-user"><img id="private-message-avatar" src="/logos and assets/defualt_profile_pfp.png" alt=""><div><h2 id="private-message-title">Messages</h2><span>Private conversation</span></div></div><button class="icon-btn" type="button" onclick="closePrivateMessageModal(null, true)" aria-label="Close messages"><i class="fa-solid fa-xmark"></i></button></div>
+    <div id="private-message-history" class="private-message-history" aria-live="polite"></div>
+    <form class="private-message-compose" onsubmit="sendPrivateMessage(event)"><textarea id="private-message-input" maxlength="2000" rows="1" placeholder="Write a message…" aria-label="Message"></textarea><button class="primary-btn" type="submit"><i class="fa-solid fa-paper-plane"></i><span>Send</span></button></form>
+  </div>
+</div>
+
+<!-- FOLLOWERS / FOLLOWING -->
+<div id="profile-user-list-modal" class="modal-overlay" onclick="closeProfileUserList(event)" role="dialog" aria-modal="true" aria-labelledby="profile-user-list-title">
+  <div class="modal-content profile-user-list-shell" onclick="event.stopPropagation()"><div class="modal-header"><h2 id="profile-user-list-title">Followers</h2><button class="icon-btn" type="button" onclick="closeProfileUserList(null, true)" aria-label="Close user list"><i class="fa-solid fa-xmark"></i></button></div><div id="profile-user-list" class="profile-user-list"></div></div>
+</div>
+
+<!-- ABOUT PANEL EDITOR -->
+<div id="profile-panel-editor-modal" class="modal-overlay" onclick="closeProfilePanelEditor(event)" role="dialog" aria-modal="true" aria-labelledby="profile-panel-editor-title">
+  <form class="modal-content profile-panel-editor-shell" onclick="event.stopPropagation()" onsubmit="saveProfilePanel(event)"><div class="modal-header"><h2 id="profile-panel-editor-title">About Panel</h2><button class="icon-btn" type="button" onclick="closeProfilePanelEditor(null, true)" aria-label="Close panel editor"><i class="fa-solid fa-xmark"></i></button></div><input id="profile-panel-id" type="hidden"><label>Title<input id="profile-panel-title" maxlength="100" placeholder="Panel title"></label><label>Image URL<input id="profile-panel-image" type="url" placeholder="https://"></label><label>Description<textarea id="profile-panel-description" maxlength="1000" rows="5" placeholder="Tell visitors more…"></textarea></label><label>Optional link<input id="profile-panel-url" type="url" placeholder="https://"></label><div class="profile-panel-editor-actions"><button id="profile-panel-delete" class="secondary-btn danger" type="button" onclick="deleteProfilePanel()" hidden>Remove</button><button class="primary-btn" type="submit">Save Panel</button></div></form>
+</div>
+
+<!-- SERVICE STATUS -->
+<div id="service-status-modal" class="modal-overlay" onclick="closeServiceStatusModal(event)" role="dialog" aria-modal="true" aria-labelledby="service-status-title">
+  <div class="modal-content service-status-shell" onclick="event.stopPropagation()"><div class="modal-header service-status-header"><div><h2 id="service-status-title"><i class="fa-solid fa-signal"></i>Service Status</h2><p>Live availability and response-time data.</p></div><button class="icon-btn" type="button" onclick="closeServiceStatusModal(null, true)" aria-label="Close status"><i class="fa-solid fa-xmark"></i></button></div><div id="service-status-content" class="service-status-content"><div class="service-status-loading"><span class="global-search-spinner"></span>Checking services…</div></div></div>
 </div>
 
 <!-- PROFILE SHARE LINK -->
@@ -6393,6 +6558,7 @@ header {
   <div class="modal-content browse-modal-shell" onclick="event.stopPropagation()">
     <div class="modal-header browse-header">
       <h2>Browse</h2>
+      <button class="browse-status-button" type="button" onclick="openServiceStatusModal()"><span class="service-status-dot" aria-hidden="true"></span>Status</button>
       <button class="icon-btn" onclick="closeClipsModal(null, true)" aria-label="Close Browse">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
@@ -6575,6 +6741,7 @@ let selectedRating = 0;
 let liveUnreadCount = 0;
 let liveNotificationCount = 0;
 let updateNotificationCount = 0;
+let messageNotificationCount = 0;
 let notificationsMarkedAsRead = localStorage.getItem('notificationsMarkedAsRead') === 'true';
 
 let settings = {
@@ -6612,9 +6779,6 @@ let settings = {
 };
 
 const ACCOUNT_STORAGE_KEY = 'multistreams_local_account_v1';
-const ACCOUNT_AUTH_CONFIG = {
-  googleClientId: '203777902987-2ut1595f82sn65kelhljoe8epcanqjc8.apps.googleusercontent.com'
-};
 const DEFAULT_ACCOUNT_STATE = Object.freeze({
   hasAccount: false,
   signedIn: false,
@@ -6825,7 +6989,19 @@ function liveNotificationIdentity(streamer = {}) {
   const platform = String(streamer.platform || 'unknown').trim().toLowerCase();
   const username = String(streamer.channelUsername || streamer.username || streamer.name || '').trim().toLowerCase();
   const startedAt = String(streamer.startedAt || streamer.streamStartedAt || '').trim();
-  return { platform, username, startedAt, base: `${platform}:${username}`, key: `${platform}:${username}:${startedAt || 'current'}` };
+  const streamId = String(streamer.videoId || streamer.streamId || streamer.id || '').trim();
+  const eventId = streamId || startedAt || 'current';
+  return { platform, username, startedAt, streamId, base: `${platform}:${username}`, key: `${platform}:${username}:${eventId}` };
+}
+
+function formatRelativeNotificationTime(value) {
+  const elapsed = Math.max(0, Date.now() - new Date(value || Date.now()).getTime());
+  const units = [[31_536_000_000, 'year'], [2_592_000_000, 'month'], [604_800_000, 'week'], [86_400_000, 'day'], [3_600_000, 'hour'], [60_000, 'minute']];
+  for (const [milliseconds, label] of units) if (elapsed >= milliseconds) {
+    const amount = Math.floor(elapsed / milliseconds);
+    return `${amount} ${label}${amount === 1 ? '' : 's'} ago`;
+  }
+  return 'Just now';
 }
 
 function isLiveNotificationDismissed(streamer) {
@@ -8544,52 +8720,17 @@ async function verifyAccountTwoFactor(event) {
 }
 
 async function startGoogleAccountFlow(purpose = 'login') {
-  if (!window.google?.accounts?.oauth2) { showNotification('Google sign-in is still loading. Please try again in a moment', 'warning', { force: true, position: 'bottom-right' }); return; }
-  try {
-    const tokenClient = window.google.accounts.oauth2.initTokenClient({
-      client_id: ACCOUNT_AUTH_CONFIG.googleClientId,
-      scope: 'openid email profile',
-      callback: async response => {
-        try {
-          if (!response?.access_token) throw new Error(response?.error || 'Google authorization failed');
-          const userResponse = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', { headers: { Authorization: `Bearer ${response.access_token}` } });
-          if (!userResponse.ok) throw new Error('Unable to fetch the Google profile');
-          await completeGoogleAccountFlow(await userResponse.json(), purpose);
-        } catch (error) { showNotification(error.message || 'Google sign-in could not be completed', 'warning', { force: true, position: 'bottom-right' }); }
-      },
-      error_callback: () => showNotification('Google sign-in was closed or could not be completed', 'warning', { force: true, position: 'bottom-right' })
-    });
-    tokenClient.requestAccessToken({ prompt: 'select_account' });
-  } catch (error) { showNotification(error.message || 'Google sign-in could not be completed', 'warning', { force: true, position: 'bottom-right' }); }
+  const oauthPurpose = purpose === 'youtube-connect' ? 'youtube-connect' : 'login';
+  location.href = `/api/oauth/google/start?purpose=${encodeURIComponent(oauthPurpose)}&returnTo=/multistreams`;
 }
 
 async function completeGoogleAccountFlow(googleProfile, purpose) {
-  const email = String(googleProfile?.email || '').trim().toLowerCase();
-  const username = String(googleProfile?.name || email.split('@')[0] || 'User123').trim().slice(0, 32);
-  if (!isValidAccountEmail(email)) throw new Error('Google did not return a usable email address');
-  if (purpose === 'settings' && accountState.signedIn) {
-    accountState.googleConnected = true; accountState.googleEmail = email; saveAccountState(); updateSecuritySettingsUI();
-    showNotification('Google account connected', 'profile', { force: true, forceSound: true, position: 'bottom-right' }); return;
-  }
-  if (purpose === 'login' && accountState.hasAccount) {
-    const allowedEmail = String(accountState.googleEmail || accountState.email || '').toLowerCase();
-    if (allowedEmail && allowedEmail !== email) throw new Error('Choose the Google account connected to this profile');
-  }
-  if (!accountState.hasAccount) accountState = { ...DEFAULT_ACCOUNT_STATE, hasAccount: true, method: 'google', email, username, googleConnected: true, googleEmail: email, devices: [] };
-  else { accountState.googleConnected = true; accountState.googleEmail = email; }
-  accountState.signedIn = true; settings.username = accountState.username || username;
-  recordCurrentSignedDevice(); saveAccountState(); saveSettings();
-  closeAccountSignupModal(null, true); closeAccountLoginModal(null, true);
-  updateAccountPrimaryAction(); updateProfileUI(); updateSecuritySettingsUI();
-  showNotification(`Signed in with Google as ${email}`, 'profile', { force: true, forceSound: true, position: 'bottom-right' });
-  openMyProfileModal();
+  startGoogleAccountFlow(purpose);
 }
 
 function toggleGoogleConnection() {
-  if (!accountState.googleConnected) { startGoogleAccountFlow('settings'); return; }
-  if (!accountState.passwordHash) { showNotification('Set a local password before disconnecting Google', 'warning', { force: true, position: 'bottom-right' }); document.getElementById('security-password')?.focus(); return; }
-  accountState.googleConnected = false; accountState.googleEmail = ''; accountState.method = 'email'; saveAccountState(); updateSecuritySettingsUI();
-  showNotification('Google account disconnected', 'profile', { force: true, forceSound: true, position: 'bottom-right' });
+  if (!accountState.googleConnected) { startGoogleAccountFlow('login'); return; }
+  showNotification('Google sign-in is managed securely by your Multistreams.tv account', 'profile', { force: true, position: 'bottom-right' });
 }
 
 async function updateAccountSecurityDetails() {
@@ -11004,6 +11145,8 @@ function showNotification(message, icon = 'info', options = {}) {
     feedback: { title: 'Feedback sent', iconClass: 'fa-solid fa-comment-dots' },
     reward: { title: 'Daily reward ready', iconClass: 'fa-solid fa-gift' },
     badge: { title: 'Badge unlocked', iconClass: 'fa-solid fa-medal' },
+    message: { title: 'New message', iconClass: 'fa-solid fa-message' },
+    follow: { title: 'Profile update', iconClass: 'fa-solid fa-user-plus' },
     error: { title: 'Something went wrong', iconClass: 'fa-solid fa-triangle-exclamation' },
     info: { title: 'Notification', iconClass: 'fa-solid fa-bell' }
   };
@@ -11048,19 +11191,27 @@ function switchNotificationTab(tab) {
   const content = document.getElementById('notification-content');
   const liveTab = document.getElementById('tab-live');
   const updatesTab = document.getElementById('tab-updates');
+  const messagesTab = document.getElementById('tab-messages');
+
+  [liveTab, updatesTab, messagesTab].forEach(item => {
+    if (!item) return;
+    item.style.color = 'var(--text-muted)';
+    item.style.borderBottom = 'none';
+  });
 
   if (tab === 'live') {
     liveTab.style.color = 'var(--accent)';
     liveTab.style.borderBottom = '2px solid var(--accent)';
-    updatesTab.style.color = 'var(--text-muted)';
-    updatesTab.style.borderBottom = 'none';
     renderLiveNotifications(content);
-  } else {
+  } else if (tab === 'updates') {
     updatesTab.style.color = 'var(--accent)';
     updatesTab.style.borderBottom = '2px solid var(--accent)';
-    liveTab.style.color = 'var(--text-muted)';
-    liveTab.style.borderBottom = 'none';
     renderUpdateNotifications(content);
+  } else {
+    messagesTab.style.color = 'var(--accent)';
+    messagesTab.style.borderBottom = '2px solid var(--accent)';
+    if (typeof window.renderMessageNotifications === 'function') window.renderMessageNotifications(content);
+    else content.innerHTML = '<div style="padding:40px 20px;text-align:center;color:var(--text-muted);font-size:14px;">Sign in to view messages.</div>';
   }
 }
 
@@ -11082,7 +11233,8 @@ function renderLiveNotifications(container) {
   }
 
   // Normal flow
-  const visibleLive = mockLiveStreamers.filter(streamer => !isLiveNotificationDismissed(streamer));
+  const visibleLive = mockLiveStreamers.filter(streamer => !isLiveNotificationDismissed(streamer))
+    .sort((a, b) => new Date(b.createdAt || b.timestamp || b.startedAt || 0) - new Date(a.createdAt || a.timestamp || a.startedAt || 0));
 
   liveNotificationCount = visibleLive.length;
   updateNotificationBadge();
@@ -11114,8 +11266,10 @@ function renderLiveNotifications(container) {
         </button>
       </div>
 
+      <span class="notification-relative-time">${formatRelativeNotificationTime(streamer.createdAt || streamer.timestamp || streamer.startedAt)}</span>
+
       <button class="notification-close-btn" 
-              onclick="event.stopImmediatePropagation(); removeLiveNotification('${streamer.username}', this)">
+              onclick="event.stopImmediatePropagation(); removeLiveNotificationByKey('${liveNotificationIdentity(streamer).key.replace(/'/g, "\\'")}')">
         ✕
       </button>
     `;
@@ -11141,8 +11295,8 @@ function renderUpdateNotifications(container) {
   }
 
   const allUpdates = [
-    { id: "v1.2.0", title: "v1.2.0 - Animated Backgrounds", description: "NEW Background Animation setting with 4 effects..." },
-    { id: "v1.1.0", title: "v1.1.0 - Community Layouts", description: "Browse and load community-submitted layouts..." }
+    { id: "v1.2.0", title: "v1.2.0 - Animated Backgrounds", description: "NEW Background Animation setting with 4 effects...", createdAt: '2026-07-22T12:00:00.000Z' },
+    { id: "v1.1.0", title: "v1.1.0 - Community Layouts", description: "Browse and load community-submitted layouts...", createdAt: '2026-07-01T12:00:00.000Z' }
   ];
 
   const visibleUpdates = allUpdates.filter(update => !deletedUpdateNotifications.includes(update.id));
@@ -11170,6 +11324,7 @@ function renderUpdateNotifications(container) {
         <p>${update.description}</p>
         <button class="update-read-more" onclick="openUpdateModal('${update.id}')">Read more</button>
       </div>
+      <span class="notification-relative-time">${formatRelativeNotificationTime(update.createdAt)}</span>
       
       <button class="notification-close-btn" 
               onclick="event.stopImmediatePropagation(); removeUpdateNotification('${update.id}', this)">
@@ -11224,6 +11379,18 @@ function removeLiveNotification(username, btn) {
   calculateNotificationCounts(); // ← Add this
 }
 
+function removeLiveNotificationByKey(notificationKey) {
+  const normalizedKey = String(notificationKey || '').toLowerCase();
+  const removed = mockLiveStreamers.find(item => liveNotificationIdentity(item).key.toLowerCase() === normalizedKey);
+  if (!deletedLiveNotifications.some(value => String(value).toLowerCase() === normalizedKey)) deletedLiveNotifications.push(notificationKey);
+  mockLiveStreamers = mockLiveStreamers.filter(item => liveNotificationIdentity(item).key.toLowerCase() !== normalizedKey);
+  if (removed?.backendNotificationId && typeof window.deleteBackendNotification === 'function') window.deleteBackendNotification(removed.backendNotificationId);
+  saveLiveNotifications();
+  saveDeletedLiveNotifications();
+  renderLiveNotifications(document.getElementById('notification-content'));
+  calculateNotificationCounts();
+}
+
 function removeUpdateNotification(id, btn) {
   deletedUpdateNotifications.push(id);
   localStorage.setItem('deletedUpdateNotifications', JSON.stringify(deletedUpdateNotifications));
@@ -11274,7 +11441,6 @@ function showLiveNotificationPopup(streamer = null) {
           ${escapeBrowseHTML(streamer.title || 'Live now')}
         </div>
       </div>
-
       <div class="live-notif-controls">
         <button class="live-notif-watch-btn" 
                 onclick="watchLiveStreamFromPopup('${streamer.channelUsername || streamer.username}', '${streamer.platform}', this)">
@@ -11367,6 +11533,8 @@ function watchLiveStreamFromPopup(username, platform, btn) {
 
 function addLiveNotificationToModal(streamer) {
   if (!streamer || !streamer.username) return;
+
+  streamer = { ...streamer, createdAt: streamer.createdAt || streamer.timestamp || new Date().toISOString() };
 
   const username = streamer.username;
   notificationsMarkedAsRead = false;
@@ -12130,19 +12298,32 @@ function removeStreamById(id) {
 
   channels.splice(index, 1);
 
-  // If we removed the active single chat
+  // If we removed the active single chat, immediately move chat to a remaining stream.
   if (activeChat && activeChat.id === id) {
-    activeChat = null;
-    chatFrame.innerHTML = "";
-    document.getElementById('chat-header-label').innerText = "Select Chat";
+    activeChat = channels[0] || null;
+    activeChats = [];
+    if (activeChat) {
+      const displayLabel = activeChat.platform === 'rumble' ? 'Rumble User' : activeChat.displayName;
+      document.getElementById('chat-header-label').innerText = `${activeChat.platform}: ${displayLabel}`;
+      loadChat(activeChat);
+    } else {
+      chatFrame.innerHTML = "";
+      document.getElementById('chat-header-label').innerText = "Select Chat";
+    }
   }
 
   // If multi-chat was active and we removed one of them
   if (activeChats.length > 0) {
     activeChats = activeChats.filter(c => c.id !== id);
     if (activeChats.length === 0) {
-      chatFrame.innerHTML = "";
-      document.getElementById('chat-header-label').innerText = "Select Chat";
+      activeChat = channels[0] || null;
+      if (activeChat) {
+        document.getElementById('chat-header-label').innerText = `${activeChat.platform}: ${activeChat.platform === 'rumble' ? 'Rumble User' : activeChat.displayName}`;
+        loadChat(activeChat);
+      } else {
+        chatFrame.innerHTML = "";
+        document.getElementById('chat-header-label').innerText = "Select Chat";
+      }
     } else {
       renderMultiChatPanel();
     }
@@ -12843,7 +13024,7 @@ function loadChat(ch) {
           chatFrame.innerHTML = `<div class="youtube-offline-chat"><div class="offline-content"><div class="offline-text">Chat Is Offline</div></div></div>`;
           return;
         }
-        const src = `https://www.youtube.com/live_chat?v=${videoId}&embed_domain=${PARENT_DOMAIN}`;
+        const src = `https://www.youtube.com/live_chat?v=${videoId}&embed_domain=${PARENT_DOMAIN}&dark_theme=true`;
         chatFrame.innerHTML = `
           <iframe 
             src="${src}" 
@@ -13227,7 +13408,7 @@ function renderMultiChatPanel() {
       if (ch.platform === "kick") src = `https://chat.kick.cx/embed/${ch.name}`;
       if (ch.platform === "youtube") {
         const videoId = getYouTubeStreamVideoId(ch);
-        src = ch.live === false || !videoId ? '' : `https://www.youtube.com/live_chat?v=${videoId}&embed_domain=${PARENT_DOMAIN}`;
+        src = ch.live === false || !videoId ? '' : `https://www.youtube.com/live_chat?v=${videoId}&embed_domain=${PARENT_DOMAIN}&dark_theme=true`;
       }
 
       content = src ? `
@@ -15310,7 +15491,7 @@ function updateNotificationBadge() {
   const badge = document.getElementById('notification-badge');
   if (!badge) return;
 
-  const total = (liveNotificationCount || 0) + (updateNotificationCount || 0);
+  const total = (liveNotificationCount || 0) + (updateNotificationCount || 0) + (messageNotificationCount || 0);
 
   if (total > 0) {
     badge.textContent = total > 9 ? '9+' : total;
@@ -15324,9 +15505,19 @@ function markAllNotificationsAsRead() {
   notificationsMarkedAsRead = true;
   localStorage.setItem('notificationsMarkedAsRead', 'true');
 
+  for (const streamer of mockLiveStreamers) {
+    const key = liveNotificationIdentity(streamer).key;
+    if (!deletedLiveNotifications.some(value => String(value).toLowerCase() === key.toLowerCase())) deletedLiveNotifications.push(key);
+  }
+  mockLiveStreamers = [];
+  saveLiveNotifications();
+  saveDeletedLiveNotifications();
+  if (typeof window.markBackendNotificationsRead === 'function') window.markBackendNotificationsRead();
+
   // Force counts to zero
   liveNotificationCount = 0;
   updateNotificationCount = 0;
+  messageNotificationCount = 0;
   updateNotificationBadge();
 
   // Visually dim all notification cards
@@ -16301,6 +16492,7 @@ function calculateNotificationCounts() {
   if (notificationsMarkedAsRead) {
     liveNotificationCount = 0;
     updateNotificationCount = 0;
+    messageNotificationCount = 0;
     updateNotificationBadge();
     return;
   }
@@ -16825,6 +17017,6 @@ if (channels.length > 0 && !activeChat) {
 applyLanguage(settings.language || 'en');
 
 </script>
-<script src="/backend-client.js?v=20260723.4"></script>
+<script src="/backend-client.js?v=20260723.5"></script>
 </body>
 </html>

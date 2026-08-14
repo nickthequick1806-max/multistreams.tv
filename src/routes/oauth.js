@@ -1,6 +1,7 @@
 import { HttpError, json, readJson, safeRedirectPath, sessionCookie } from '../lib/http.js';
 import { createSession, nowIso, optionalSession, requireSession } from '../lib/db.js';
 import { decrypt, encrypt, randomId, sha256 } from '../lib/crypto.js';
+import { syncYoutubeSubscriptionsForUser } from '../platforms.js';
 
 const OAUTH = {
   twitch: {
@@ -166,10 +167,16 @@ async function finishGoogleLogin(request, env, identity) {
     ]);
     user = await env.DB.prepare('SELECT * FROM users WHERE id = ?1').bind(id).first();
   }
-  return { user, token: await createSession(request, env, user.id) };
+  if (user.two_factor_enabled && user.two_factor_secret) {
+    const ticket = randomId(24);
+    await env.DB.prepare(`INSERT INTO auth_challenges (id, user_id, type, created_at, expires_at)
+      VALUES (?1, ?2, 'login_totp', ?3, ?4)`).bind(ticket, user.id, timestamp, new Date(Date.now() + 5 * 60_000).toISOString()).run();
+    return { user, requiresTwoFactor: true, ticket };
+  }
+  return { user, token: await createSession(request, env, user.id), requiresTwoFactor: false };
 }
 
-async function saveConnection(env, userId, platform, identity, tokens, scopes) {
+export async function saveConnection(env, userId, platform, identity, tokens, scopes) {
   const timestamp = nowIso();
   const expiresAt = tokens.expires_in ? new Date(Date.now() + Number(tokens.expires_in) * 1000).toISOString() : null;
   const grantedScopes = Array.isArray(tokens.scope)
@@ -188,7 +195,7 @@ async function saveConnection(env, userId, platform, identity, tokens, scopes) {
       expiresAt, JSON.stringify({ avatarUrl: identity.avatarUrl || '', bannerUrl: identity.bannerUrl || '' }), timestamp).run();
 }
 
-async function finishOAuth(request, env, platform, url) {
+async function finishOAuth(request, env, platform, url, context) {
   const error = url.searchParams.get('error');
   const state = String(url.searchParams.get('state') || '');
   const code = String(url.searchParams.get('code') || '');
@@ -208,19 +215,35 @@ async function finishOAuth(request, env, platform, url) {
   const identity = await fetchIdentity(connectedPlatform, tokens.access_token, env);
   if (platform === 'google' && metadata.purpose === 'login') {
     const result = await finishGoogleLogin(request, env, identity);
-    try {
-      const youtubeIdentity = await fetchIdentity('youtube', tokens.access_token, env);
+    let youtubeIdentity = null;
+    try { youtubeIdentity = await fetchIdentity('youtube', tokens.access_token, env); }
+    catch (youtubeError) { console.warn(JSON.stringify({ event: 'google_login_youtube_connection_unavailable', message: youtubeError.message || '' })); }
+    if (result.requiresTwoFactor) {
+      if (youtubeIdentity) {
+        const pendingConnection = await encrypt(JSON.stringify({ platform: 'youtube', identity: youtubeIdentity, tokens, scopes: OAUTH.youtube.scopes }), env.TOKEN_ENCRYPTION_KEY);
+        await env.DB.prepare(`UPDATE auth_challenges SET secret = ?1, metadata_json = ?2 WHERE id = ?3 AND type = 'login_totp'`)
+          .bind(pendingConnection, JSON.stringify({ provider: 'google', pendingConnection: true }), result.ticket).run();
+      }
+      destination.searchParams.set('auth', 'two-factor');
+      destination.searchParams.set('ticket', result.ticket);
+      return Response.redirect(destination.toString(), 302);
+    }
+    if (youtubeIdentity) {
       await saveConnection(env, result.user.id, 'youtube', youtubeIdentity, tokens, OAUTH.youtube.scopes);
+      const syncJob = syncYoutubeSubscriptionsForUser(env, result.user.id).catch(error => console.warn(JSON.stringify({ event: 'youtube_subscription_sync_failed', message: error.message || '' })));
+      if (context?.waitUntil) context.waitUntil(syncJob); else await syncJob;
       destination.searchParams.set('oauth', 'youtube');
       destination.searchParams.set('status', 'connected');
-    } catch (youtubeError) {
-      console.warn(JSON.stringify({ event: 'google_login_youtube_connection_unavailable', message: youtubeError.message || '' }));
     }
     destination.searchParams.set('auth', 'success');
     return new Response(null, { status: 302, headers: { location: destination.toString(), 'set-cookie': sessionCookie(env, result.token) } });
   }
   if (!challenge.user_id) throw new HttpError(401, 'Sign in before connecting a platform.', 'authentication_required');
   await saveConnection(env, challenge.user_id, connectedPlatform, identity, tokens, requestedScopes(platform, metadata.purpose));
+  if (connectedPlatform === 'youtube') {
+    const syncJob = syncYoutubeSubscriptionsForUser(env, challenge.user_id).catch(error => console.warn(JSON.stringify({ event: 'youtube_subscription_sync_failed', message: error.message || '' })));
+    if (context?.waitUntil) context.waitUntil(syncJob); else await syncJob;
+  }
   destination.searchParams.set('oauth', connectedPlatform);
   destination.searchParams.set('status', 'connected');
   return Response.redirect(destination.toString(), 302);
@@ -268,14 +291,14 @@ async function disconnect(request, env, platform) {
   return json({ ok: true, platform });
 }
 
-export async function handleOAuthRoute(request, env, url) {
+export async function handleOAuthRoute(request, env, url, context) {
   if (url.pathname === '/api/platform/connections' && request.method === 'GET') return listConnections(request, env);
   if (url.pathname === '/api/platform/rumble/connect' && request.method === 'POST') return connectRumble(request, env);
   const match = url.pathname.match(/^\/api\/oauth\/([a-z]+)\/(start|callback)$/);
   if (match) {
     const [, platform, action] = match;
     if (action === 'start' && request.method === 'GET') return startOAuth(request, env, platform, url);
-    if (action === 'callback' && request.method === 'GET') return finishOAuth(request, env, platform, url);
+    if (action === 'callback' && request.method === 'GET') return finishOAuth(request, env, platform, url, context);
   }
   const disconnectMatch = url.pathname.match(/^\/api\/platform\/([a-z]+)$/);
   if (disconnectMatch && request.method === 'DELETE') return disconnect(request, env, disconnectMatch[1]);

@@ -1,6 +1,14 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { normalizeKickChannel, normalizeKickLive } from '../src/platforms.js';
+import { isCreatorYoutubeLivePayload, normalizeKickChannel, normalizeKickLive } from '../src/platforms.js';
+
+test('YouTube fallback candidates require a current live broadcast signal', () => {
+  assert.equal(isCreatorYoutubeLivePayload({ durationMs: null, publishDateText: 'Started streaming 2 hours ago' }), true);
+  assert.equal(isCreatorYoutubeLivePayload({ isLiveNow: true, durationMs: 12_000 }), true);
+  assert.equal(isCreatorYoutubeLivePayload({ durationMs: 12_000, publishDateText: 'Started streaming yesterday' }), false);
+  assert.equal(isCreatorYoutubeLivePayload({ durationMs: null, publishDateText: 'Streamed 2 hours ago' }), false);
+  assert.equal(isCreatorYoutubeLivePayload({ durationMs: null, actualEndTime: '2026-07-23T12:00:00Z', publishDateText: 'Started streaming yesterday' }), false);
+});
 
 test('Kick live records use the official broadcaster profile and positive viewer count', () => {
   const stream = normalizeKickLive({

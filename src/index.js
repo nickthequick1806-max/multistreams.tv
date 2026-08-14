@@ -9,8 +9,10 @@ import { handleRewardRoute } from './routes/rewards.js';
 import { handleAiRoute } from './routes/ai.js';
 import { handleMediaRoute } from './routes/media.js';
 import { handleThirdPartyRoute } from './routes/third-party.js';
+import { handleMessageRoute } from './routes/messages.js';
+import { handleStatusRoute } from './routes/status.js';
 
-const routeHandlers = [handleAuthRoute, handleOAuthRoute, handlePlatformRoute, handleDataRoute, handleProfileRoute, handleRewardRoute, handleAiRoute, handleMediaRoute, handleThirdPartyRoute];
+const routeHandlers = [handleAuthRoute, handleOAuthRoute, handlePlatformRoute, handleDataRoute, handleProfileRoute, handleRewardRoute, handleMessageRoute, handleStatusRoute, handleAiRoute, handleMediaRoute, handleThirdPartyRoute];
 const CLEAN_PAGE_NAMES = new Set(['home', 'multistreams', 'about', 'contact', 'blog', 'status', 'twitch', 'kick', 'youtube', 'rumble', 'guidelines', 'terms', 'privacy', 'dmca']);
 const GOOGLE_SITE_VERIFICATION_FILE = 'googledfe111b1f289a1f0.html';
 
@@ -99,7 +101,7 @@ async function layoutShell(request, env, url) {
   canonical.searchParams.set('name', details.name);
   const shellUrl = new URL('/multistreams.html', url.origin);
   const shell = await env.ASSETS.fetch(new Request(shellUrl, { method: request.method, headers: request.headers }));
-  const image = 'https://i.postimg.cc/zXqp6fVh/og-image.png';
+  const image = `${url.origin}/logos%20and%20assets/shared_layout_banner.png`;
   const rewritten = new HTMLRewriter()
     .on('title', new ReplaceText(`${details.name} | Multistreams.tv`))
     .on('meta[name="description"]', new ReplaceAttribute('content', description))

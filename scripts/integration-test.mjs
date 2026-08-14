@@ -37,6 +37,9 @@ const password = 'Integration-password-42!';
 
 const health = await request('/api/health');
 assert.equal(health.database, true);
+const serviceStatus = await request('/api/status');
+assert.ok(['operational', 'degraded', 'down'].includes(serviceStatus.status));
+assert.ok(Array.isArray(serviceStatus.services));
 
 const signup = await request('/api/auth/signup', { method: 'POST', expected: 201, body: { email, username, password } });
 assert.equal(signup.user.username, username);
@@ -54,6 +57,9 @@ await request('/api/profile/me', { method: 'PATCH', body: { bio: 'Backend integr
 const profile = await request('/api/profile/me');
 assert.equal(profile.profile.bio, 'Backend integration profile');
 assert.equal(profile.profile.socials.twitch, 'https://twitch.tv/twitchdev');
+const panelPayload = await request('/api/profile/panels', { method: 'POST', body: { title: 'Integration panel', description: 'Persistent profile panel', imageUrl: 'https://multistreams.tv/logos%20and%20assets/shared_layout_banner.png', url: 'https://multistreams.tv' } });
+assert.equal(panelPayload.panels[0].title, 'Integration panel');
+await request('/api/profile/panels/reorder', { method: 'PUT', body: { ids: panelPayload.panels.map(panel => panel.id) } });
 
 const avatarForm = new FormData();
 avatarForm.append('file', new Blob([Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')], { type: 'image/png' }), 'avatar.png');
@@ -78,6 +84,7 @@ assert.equal(sharedLayoutResponse.status, 200);
 const sharedLayoutHtml = await sharedLayoutResponse.text();
 assert.match(sharedLayoutHtml, /<meta property="og:title" content="Integration Share">/);
 assert.match(sharedLayoutHtml, /2 streams \| Horizontal layout on Multistreams\.tv\./);
+assert.match(sharedLayoutHtml, /<meta property="og:image" content="https?:\/\/[^"/]+\/logos%20and%20assets\/shared_layout_banner\.png">/);
 
 const createdCommunity = await request('/api/community-layouts', { method: 'POST', expected: 201, body: { name: 'Integration Community Layout', channels: layoutChannels, layout: 'vertical' } });
 const community = await request(`/api/community-layouts?q=${encodeURIComponent(username)}`);
@@ -95,6 +102,47 @@ const login = await request('/api/auth/login', { method: 'POST', body: { email, 
 assert.equal(login.requiresTwoFactor, true);
 const verified = await request('/api/auth/login/totp', { method: 'POST', body: { ticket: login.ticket, code: await totpCode(setup.secret) } });
 assert.equal(verified.user.username, username);
+
+// Persistent social graph, messages, notification deletion, and blocking.
+const firstCookie = cookie;
+cookie = '';
+const secondUsername = `peer${String(suffix).replace(/\D/g, '').slice(-12)}`;
+const secondEmail = `${secondUsername}@example.test`;
+await request('/api/auth/signup', { method: 'POST', expected: 201, body: { email: secondEmail, username: secondUsername, password } });
+const secondCookie = cookie;
+await request(`/api/profiles/${encodeURIComponent(username)}/follow`, { method: 'PUT', body: {} });
+await request(`/api/messages/${encodeURIComponent(username)}`, { method: 'POST', body: { message: 'First persistent integration message' } });
+await new Promise(resolve => setTimeout(resolve, 5));
+await request(`/api/messages/${encodeURIComponent(username)}`, { method: 'POST', body: { message: 'Second persistent integration message' } });
+
+cookie = firstCookie;
+const firstProfile = await request(`/api/profiles/${encodeURIComponent(username)}`);
+assert.equal(firstProfile.profile.stats.followers, 1);
+const followers = await request(`/api/profiles/${encodeURIComponent(username)}/followers`);
+assert.equal(followers.profiles[0].username, secondUsername);
+let messageNotifications = (await request('/api/notifications')).notifications.filter(item => item.type === 'message');
+assert.equal(messageNotifications.length, 2);
+assert.ok(new Date(messageNotifications[0].createdAt) >= new Date(messageNotifications[1].createdAt));
+await request(`/api/notifications/${encodeURIComponent(messageNotifications[0].id)}`, { method: 'DELETE' });
+const conversation = await request(`/api/messages/${encodeURIComponent(secondUsername)}`);
+assert.equal(conversation.messages.length, 2);
+await request('/api/notifications', { method: 'DELETE' });
+
+cookie = secondCookie;
+await request(`/api/messages/${encodeURIComponent(username)}`, { method: 'POST', body: { message: 'Notification after clear' } });
+cookie = firstCookie;
+messageNotifications = (await request('/api/notifications')).notifications.filter(item => item.type === 'message');
+assert.equal(messageNotifications.length, 1);
+await request(`/api/profiles/${encodeURIComponent(secondUsername)}/block`, { method: 'PUT', body: {} });
+cookie = secondCookie;
+await request(`/api/messages/${encodeURIComponent(username)}`, { method: 'POST', expected: 403, body: { message: 'Blocked message must fail' } });
+cookie = firstCookie;
+await request(`/api/profiles/${encodeURIComponent(secondUsername)}/block`, { method: 'DELETE', body: {} });
+cookie = secondCookie;
+const secondProfile = await request(`/api/profiles/${encodeURIComponent(secondUsername)}`);
+assert.equal(secondProfile.profile.stats.following, 0, 'Blocking removes reciprocal follow relationships');
+await request('/api/auth/account', { method: 'DELETE', body: { confirmation: secondUsername } });
+cookie = firstCookie;
 
 let rewards = [];
 if (!skipRewards) {

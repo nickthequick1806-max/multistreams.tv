@@ -101,6 +101,18 @@ async function readNotifications(request, env) {
   return json({ ok: true });
 }
 
+async function deleteNotification(request, env, id) {
+  const session = await requireSession(request, env);
+  await env.DB.prepare('DELETE FROM notifications WHERE id = ?1 AND user_id = ?2').bind(id, session.user_id).run();
+  return json({ ok: true, id });
+}
+
+async function clearNotifications(request, env) {
+  const session = await requireSession(request, env);
+  await env.DB.prepare('DELETE FROM notifications WHERE user_id = ?1').bind(session.user_id).run();
+  return json({ ok: true });
+}
+
 export async function handleRewardRoute(request, env, url) {
   if (url.pathname === '/api/rewards/status' && request.method === 'GET') return rewardStatus(request, env);
   if (url.pathname === '/api/rewards/claim' && request.method === 'POST') return claimReward(request, env);
@@ -111,6 +123,9 @@ export async function handleRewardRoute(request, env, url) {
   if (url.pathname === '/api/watchtime' && request.method === 'POST') return addWatchtime(request, env);
   if (url.pathname === '/api/notifications' && request.method === 'GET') return listNotifications(request, env);
   if (url.pathname === '/api/notifications/read' && request.method === 'POST') return readNotifications(request, env);
+  if (url.pathname === '/api/notifications' && request.method === 'DELETE') return clearNotifications(request, env);
+  const notificationMatch = url.pathname.match(/^\/api\/notifications\/([^/]+)$/);
+  if (notificationMatch && request.method === 'DELETE') return deleteNotification(request, env, notificationMatch[1]);
   return null;
 }
 

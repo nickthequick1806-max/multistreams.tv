@@ -7,6 +7,16 @@
     viewedProfile: null,
     profileResults: [],
     followedProfiles: [],
+    blockedProfiles: [],
+    blockedProfilesLoaded: false,
+    notifications: [],
+    notificationIds: new Set(),
+    notificationsInitialized: false,
+    conversations: [],
+    activeConversation: null,
+    activeConversationUsername: '',
+    sidebarExpanded: { following: false, featured: false, categories: false },
+    recommendedCategories: [],
     connections: [],
     featured: [],
     browse: { twitch: { categories: [], live: [], clips: [] }, youtube: { categories: [], live: [], clips: [] }, kick: { categories: [], live: [], clips: [] }, rumble: { categories: [], live: [], clips: [] } },
@@ -87,6 +97,9 @@
       bio: profile.bio || '',
       socialLinks: profile.socials || {},
       layouts: (profile.layouts || []).map(layout => ({ ...layout, link: layout.link || buildLayoutLink(layout.channels || [], layout.layout, layout.name) })),
+      panels: Array.isArray(profile.panels) ? profile.panels : [],
+      stats: profile.stats || { layouts: 0, followers: 0, following: 0 },
+      connections: profile.connections || {},
       following: Boolean(profile.following),
       privacy: {
         visibility: profile.profileVisibility === 'hidden' ? 'hidden' : 'public',
@@ -208,10 +221,41 @@
     renderMyProfile?.();
   }
 
+  function renderBackendBlockedProfiles() {
+    const list = document.getElementById('privacy-blocked-list');
+    const count = document.getElementById('privacy-blocked-count');
+    if (!list) return;
+    const profiles = real.blockedProfiles || [];
+    if (count) count.textContent = `${profiles.length} blocked`;
+    list.innerHTML = profiles.length ? profiles.map(profile => `
+      <div class="privacy-blocked-user">
+        <img class="privacy-blocked-avatar" src="${escapeHTML(profile.avatarUrl || '/logos and assets/defualt_profile_pfp.png')}" alt="${escapeHTML(profile.username)}">
+        <span class="privacy-blocked-copy"><strong>${escapeHTML(profile.username)}</strong><span>${escapeHTML(profile.bio || 'Blocked from viewing your profile')}</span></span>
+        <button type="button" class="privacy-unblock-button" data-unblock-profile="${escapeHTML(profile.username)}"><i class="fa-solid fa-unlock" aria-hidden="true"></i>Unblock</button>
+      </div>`).join('') : '<div class="privacy-blocked-empty">No profiles are currently blocked.</div>';
+    list.querySelectorAll('[data-unblock-profile]').forEach(button => button.addEventListener('click', () => unblockPrivacyProfile(button.dataset.unblockProfile)));
+  }
+
+  async function loadBlockedProfiles() {
+    if (!accountState.signedIn) {
+      real.blockedProfiles = [];
+      real.blockedProfilesLoaded = true;
+      settings.blockedProfiles = [];
+      renderBackendBlockedProfiles();
+      return;
+    }
+    const payload = await api('/api/profiles/blocked');
+    real.blockedProfiles = payload.profiles || [];
+    real.blockedProfilesLoaded = true;
+    settings.blockedProfiles = real.blockedProfiles.map(profile => String(profile.username || '').toLowerCase());
+    renderBackendBlockedProfiles();
+  }
+
   async function loadRemoteSettings() {
     if (!accountState.signedIn) return;
     const payload = await api('/api/settings');
     settings = { ...settings, ...(payload.settings || {}), username: real.session.user.username };
+    if (real.blockedProfilesLoaded) settings.blockedProfiles = real.blockedProfiles.map(profile => String(profile.username || '').toLowerCase());
     updateSettingsUI?.();
     applyAllSettings?.();
   }
@@ -240,9 +284,10 @@
     const [connectionPayload, followingPayload] = await Promise.all([api('/api/platform/connections'), api('/api/following/live')]);
     real.connections = connectionPayload.connections || [];
     const followedStreams = followingPayload.streams || [];
-    const nextFollowingIds = new Set(followedStreams.map(stream => `${stream.platform}:${stream.username || stream.name}`));
+    const followingIdentity = stream => `${stream.platform}:${stream.id || stream.videoId || stream.username || stream.name}`;
+    const nextFollowingIds = new Set(followedStreams.map(followingIdentity));
     const newlyLive = real.followingIds.size && settings.liveNotificationsEnabled !== false
-      ? followedStreams.filter(stream => !real.followingIds.has(`${stream.platform}:${stream.username || stream.name}`))
+      ? followedStreams.filter(stream => !real.followingIds.has(followingIdentity(stream)))
       : [];
     real.followingIds = nextFollowingIds;
     mockFollowedData = followedStreams.map(stream => ({
@@ -263,17 +308,27 @@
     updateConnectAccountStatuses?.();
     pruneDeletedLiveNotifications?.(followedStreams);
     const visibleFollowedStreams = followedStreams.filter(stream => !isLiveNotificationDismissed?.(stream));
-    mockLiveStreamers = visibleFollowedStreams.map(stream => ({
+    const persistedBackendLive = (mockLiveStreamers || []).filter(stream => stream.backendNotificationId);
+    const activeLive = visibleFollowedStreams.map(stream => ({
       username: stream.name || stream.username,
       channelUsername: stream.username || stream.name,
       title: stream.title || '',
       avatar: stream.avatar || '',
       platform: stream.platform,
+      id: stream.id || '',
+      videoId: stream.platform === 'youtube' ? (stream.id || stream.videoId || '') : '',
+      channelId: stream.channelId || '',
       category: stream.category || 'Live',
       viewers: hasViewerCount(stream) ? compact(stream.viewers) : 'LIVE',
       startedAt: stream.startedAt || '',
-      timestamp: new Date().toISOString()
+      createdAt: stream.notificationCreatedAt || stream.startedAt || new Date().toISOString()
     }));
+    const mergedLive = new Map();
+    [...activeLive, ...persistedBackendLive].forEach(stream => {
+      const key = liveNotificationIdentity?.(stream)?.key || followingIdentity(stream);
+      if (!isLiveNotificationDismissed?.(stream) && !mergedLive.has(key)) mergedLive.set(key, stream);
+    });
+    mockLiveStreamers = [...mergedLive.values()].sort((a, b) => new Date(b.createdAt || b.startedAt || 0) - new Date(a.createdAt || a.startedAt || 0));
     saveLiveNotifications?.();
     newlyLive.filter(stream => !isLiveNotificationDismissed?.(stream)).forEach(stream => {
       showLiveNotificationPopup?.({
@@ -282,9 +337,13 @@
         title: stream.title || `${stream.name || stream.username} is now live`,
         avatar: stream.avatar || '',
         platform: stream.platform,
+        id: stream.id || '',
+        videoId: stream.platform === 'youtube' ? (stream.id || stream.videoId || '') : '',
+        channelId: stream.channelId || '',
         category: stream.category || 'Live',
         viewers: hasViewerCount(stream) ? compact(stream.viewers) : 'LIVE',
-        startedAt: stream.startedAt || ''
+        startedAt: stream.startedAt || '',
+        createdAt: new Date().toISOString()
       });
     });
     calculateNotificationCounts?.();
@@ -293,15 +352,33 @@
   function renderFeatured() {
     const sidebar = document.getElementById('featured-list');
     if (sidebar) {
-      sidebar.innerHTML = real.featured.slice(0, 4).map(user => `
+      const shown = real.sidebarExpanded.featured ? real.featured : real.featured.slice(0, 6);
+      sidebar.innerHTML = shown.map(user => `
         <div class="followed-channel" data-featured-platform="${escapeHTML(user.platform)}" data-featured-name="${escapeHTML(user.username)}">
           ${avatarMarkup(user, 'followed-avatar')}
-          <div class="followed-info"><div class="followed-name">${escapeHTML(user.name)}</div><div class="followed-category">${escapeHTML(user.live ? user.category : 'Offline')}</div></div>
-          <div class="followed-viewers"><div class="dot" style="background:${getPlatformColor(user.platform)}"></div>${user.live ? compact(user.viewers) : 'Offline'}</div>
+          <div class="followed-info"><div class="followed-name">${escapeHTML(user.name)}</div><div class="followed-category">${escapeHTML(user.category || 'Live')}</div></div>
+          <div class="followed-viewers"><div class="dot" style="background:${getPlatformColor(user.platform)}"></div>${hasViewerCount(user) ? compact(user.viewers) : 'LIVE'}</div>
         </div>`).join('');
       sidebar.querySelectorAll('[data-featured-name]').forEach(card => card.addEventListener('click', () => addStream(card.dataset.featuredName, card.dataset.featuredPlatform)));
     }
+    const toggle = document.getElementById('featured-show-toggle');
+    if (toggle) { toggle.hidden = real.featured.length <= 6; toggle.textContent = real.sidebarExpanded.featured ? 'Show Less' : 'Show More'; }
+    renderRecommendedCategories();
     renderRealSuggested();
+  }
+
+  function renderRecommendedCategories() {
+    const container = document.getElementById('recommended-category-list');
+    if (!container) return;
+    const shown = real.sidebarExpanded.categories ? real.recommendedCategories : real.recommendedCategories.slice(0, 6);
+    container.innerHTML = shown.map(category => `<div class="recommended-category" data-category-id="${escapeHTML(category.id)}"><img src="${escapeHTML(category.image || '')}" alt=""><span class="recommended-category-copy"><strong>${escapeHTML(category.name)}</strong><span>${Number(category.liveChannels || 0)} live channels</span></span><span class="recommended-category-viewers">${compact(category.watching)}</span></div>`).join('');
+    container.querySelectorAll('[data-category-id]').forEach(card => card.addEventListener('click', () => {
+      const category = real.recommendedCategories.find(item => String(item.id) === String(card.dataset.categoryId));
+      openClipsModal?.();
+      if (category) setTimeout(() => selectCategory?.(category.name, category.image, category.id), 40);
+    }));
+    const toggle = document.getElementById('categories-show-toggle');
+    if (toggle) { toggle.hidden = real.recommendedCategories.length <= 6; toggle.textContent = real.sidebarExpanded.categories ? 'Show Less' : 'Show More'; }
   }
 
   function renderRealSuggested() {
@@ -322,10 +399,29 @@
   window.renderFeaturedList = renderFeatured;
 
   async function loadFeatured() {
-    const payload = await api('/api/featured?limit=20');
-    real.featured = payload.items || [];
+    const [payload, categories] = await Promise.all([api('/api/featured?limit=20'), api('/api/browse/twitch?view=categories&limit=30')]);
+    real.featured = (payload.items || []).filter(item => item.live).sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0));
+    real.recommendedCategories = (categories.items || []).sort((a, b) => Number(b.watching || 0) - Number(a.watching || 0));
     renderFeatured();
   }
+
+  window.toggleSidebarSection = section => {
+    if (!(section in real.sidebarExpanded)) return;
+    real.sidebarExpanded[section] = !real.sidebarExpanded[section];
+    if (section === 'following') renderFollowedList?.();
+    else renderFeatured();
+  };
+
+  window.renderFollowedList = () => {
+    const list = document.getElementById('followed-list');
+    if (!list) return;
+    const sorted = [...(mockFollowedData || [])].sort((a, b) => Number(b.realData?.viewers || 0) - Number(a.realData?.viewers || 0));
+    const shown = real.sidebarExpanded.following ? sorted : sorted.slice(0, 6);
+    list.innerHTML = shown.map(user => `<div class="followed-channel" data-followed-platform="${escapeHTML(user.platform)}" data-followed-name="${escapeHTML(user.name)}">${avatarMarkup({ ...user.realData, name: user.name, avatar: user.avatar }, 'followed-avatar')}<div class="followed-info"><div class="followed-name">${escapeHTML(user.name)}</div><div class="followed-category">${escapeHTML(user.category || 'Live')}</div></div><div class="followed-viewers"><div class="dot" style="background:${getPlatformColor(user.platform)}"></div>${hasViewerCount(user.realData) ? compact(user.realData.viewers) : 'LIVE'}</div></div>`).join('');
+    list.querySelectorAll('[data-followed-name]').forEach(card => card.addEventListener('click', () => toggleStream(card.dataset.followedName, card.dataset.followedPlatform)));
+    const toggle = document.getElementById('followed-show-toggle');
+    if (toggle) { toggle.hidden = sorted.length <= 6; toggle.textContent = real.sidebarExpanded.following ? 'Show Less' : 'Show More'; }
+  };
 
   async function loadRewardData() {
     if (!accountState.signedIn) return;
@@ -370,9 +466,11 @@
         jobs.push(
           loadRemoteProfile(),
           loadRemoteSettings(),
+          loadBlockedProfiles(),
           loadConnectionsAndFollowing(),
           loadRewardData(),
-          loadSecurityDevices()
+          loadSecurityDevices(),
+          loadBackendNotifications()
         );
         if (!incomingSharedLayout?.streams?.length) jobs.push(loadRemoteState());
       }
@@ -392,10 +490,17 @@
       if (sharedLayout?.streams?.length) {
         applyLoadedLayout({ name: sharedLayout.name || 'Shared Layout', streams: sharedLayout.streams, layout: sharedLayout.layout, source: 'Shared link' });
       }
+      if (params.get('auth') === 'two-factor' && params.get('ticket')) {
+        real.loginTicket = params.get('ticket');
+        document.querySelector('#account-two-factor-modal .two-factor-otp-card')?.setAttribute('hidden', '');
+        const copy = document.getElementById('account-two-factor-copy');
+        if (copy) copy.textContent = 'Google sign-in was verified. Enter the current six-digit code from your authenticator app to finish signing in.';
+        openAccountTwoFactorModal?.();
+      }
       if (params.get('status') === 'connected') showNotification(`${params.get('oauth') || 'Platform'} connected successfully`, 'saved', { position: 'bottom-right' });
       if (params.get('auth') === 'success') showNotification('Signed in successfully', 'saved', { position: 'bottom-right' });
       if (params.has('oauth') || params.has('auth') || params.has('status')) {
-        params.delete('oauth'); params.delete('auth'); params.delete('status');
+        params.delete('oauth'); params.delete('auth'); params.delete('status'); params.delete('ticket');
         history.replaceState({}, '', `${location.pathname}${params.toString() ? `?${params}` : ''}${location.hash}`);
       }
     } catch (error) {
@@ -418,7 +523,7 @@
       }) });
       closeAccountSignupModal(null, true);
       await refreshSession();
-      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData(), loadSecurityDevices()]);
+      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadBlockedProfiles(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData(), loadSecurityDevices(), loadBackendNotifications()]);
       showNotification('Your account is ready', 'saved', { position: 'bottom-right' });
     } catch (error) { if (errorElement) errorElement.textContent = error.message; }
   };
@@ -441,7 +546,7 @@
       }
       closeAccountLoginModal(null, true);
       await refreshSession();
-      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData(), loadSecurityDevices()]);
+      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadBlockedProfiles(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData(), loadSecurityDevices(), loadBackendNotifications()]);
       showNotification('Signed in successfully', 'saved', { position: 'bottom-right' });
     } catch (error) { if (errorElement) errorElement.textContent = error.message; }
   };
@@ -454,7 +559,7 @@
       real.loginTicket = '';
       closeAccountTwoFactorModal(null, true);
       await refreshSession();
-      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData(), loadSecurityDevices()]);
+      await Promise.all([loadRemoteProfile(), loadRemoteSettings(), loadBlockedProfiles(), loadRemoteState(), loadConnectionsAndFollowing(), loadRewardData(), loadSecurityDevices(), loadBackendNotifications()]);
       showNotification('Two-factor sign-in verified', 'saved', { position: 'bottom-right' });
     } catch (error) { if (errorElement) errorElement.textContent = error.message; }
   };
@@ -1025,6 +1130,92 @@
   window.getViewedProfileRecord = () => real.viewedProfile || getOwnProfileRecord();
   window.getSearchableProfiles = () => [getOwnProfileRecord(), ...real.profileResults];
   window.getProfileAccessState = profile => profile?.backendAccess || { allowed: true, reason: '' };
+  window.renderBlockedProfilesList = renderBackendBlockedProfiles;
+
+  let privacyBlockSearchTimer = null;
+  let privacyBlockSearchToken = 0;
+  function hidePrivacyBlockSearchResults() {
+    clearTimeout(privacyBlockSearchTimer);
+    privacyBlockSearchToken += 1;
+    document.getElementById('privacy-block-search-results')?.classList.remove('active');
+    document.getElementById('privacy-block-search-shell')?.classList.remove('is-loading');
+    document.getElementById('privacy-block-username')?.setAttribute('aria-expanded', 'false');
+  }
+  window.searchPrivacyBlockProfiles = query => {
+    const value = String(query || '').trim();
+    const results = document.getElementById('privacy-block-search-results');
+    const shell = document.getElementById('privacy-block-search-shell');
+    const input = document.getElementById('privacy-block-username');
+    clearTimeout(privacyBlockSearchTimer);
+    if (!results || !shell || !input) return;
+    if (!accountState.signedIn) {
+      results.innerHTML = '<div class="privacy-block-search-empty">Sign in to search for and block profiles.</div>';
+      results.classList.add('active');
+      input.setAttribute('aria-expanded', 'true');
+      return;
+    }
+    if (value.length < 2) {
+      results.innerHTML = '<div class="privacy-block-search-empty">Enter at least two characters to search profiles.</div>';
+      results.classList.toggle('active', Boolean(value));
+      input.setAttribute('aria-expanded', value ? 'true' : 'false');
+      shell.classList.remove('is-loading');
+      return;
+    }
+    shell.classList.add('is-loading');
+    results.innerHTML = '<div class="privacy-block-search-empty">Searching profiles…</div>';
+    results.classList.add('active');
+    input.setAttribute('aria-expanded', 'true');
+    const token = ++privacyBlockSearchToken;
+    privacyBlockSearchTimer = setTimeout(async () => {
+      try {
+        const payload = await api(`/api/profiles?q=${encodeURIComponent(value)}`);
+        if (token !== privacyBlockSearchToken) return;
+        const ownUsername = String(real.session?.user?.username || '').toLowerCase();
+        const blocked = new Set(real.blockedProfiles.map(profile => String(profile.username || '').toLowerCase()));
+        const profiles = (payload.profiles || []).filter(profile => {
+          const username = String(profile.username || '').toLowerCase();
+          return username && username !== ownUsername && !blocked.has(username);
+        });
+        results.innerHTML = profiles.length ? profiles.map(profile => `
+          <button type="button" class="privacy-block-search-card" data-block-profile="${escapeHTML(profile.username)}" role="option" style="background-image:url(&quot;${escapeHTML(profile.bannerUrl || '/logos and assets/defualt_profile_banner.png')}&quot;)">
+            <img class="privacy-blocked-avatar" src="${escapeHTML(profile.avatarUrl || '/logos and assets/defualt_profile_pfp.png')}" alt="">
+            <span class="privacy-blocked-copy"><strong>${escapeHTML(profile.username)}</strong><span>${profile.access?.allowed === false ? 'Private profile · click to block' : 'Profile found · click to block'}</span></span>
+            <i class="fa-solid fa-ban privacy-block-search-action" aria-hidden="true"></i>
+          </button>`).join('') : `<div class="privacy-block-search-empty">No available profiles found for “${escapeHTML(value)}”.</div>`;
+        results.querySelectorAll('[data-block-profile]').forEach(button => button.addEventListener('click', () => blockPrivacyProfile(button.dataset.blockProfile)));
+      } catch (error) {
+        if (token === privacyBlockSearchToken) results.innerHTML = `<div class="privacy-block-search-empty">${escapeHTML(error.message)}</div>`;
+      } finally {
+        if (token === privacyBlockSearchToken) shell.classList.remove('is-loading');
+      }
+    }, 240);
+  };
+  window.blockPrivacyProfile = async username => {
+    if (!accountState.signedIn) { handleProfilePrimaryAction(); return; }
+    try {
+      await api(`/api/profiles/${encodeURIComponent(username)}/block`, { method: 'PUT' });
+      const input = document.getElementById('privacy-block-username');
+      if (input) input.value = '';
+      hidePrivacyBlockSearchResults();
+      await loadBlockedProfiles();
+      renderMyProfile?.();
+      showNotification(`${username} was blocked`, 'settings', { position: 'bottom-right' });
+    } catch (error) { notifyError(error); }
+  };
+  window.blockProfileFromPrivacy = () => {
+    const first = document.querySelector('#privacy-block-search-results [data-block-profile]');
+    if (first) blockPrivacyProfile(first.dataset.blockProfile);
+  };
+  window.unblockPrivacyProfile = async username => {
+    if (!accountState.signedIn) return;
+    try {
+      await api(`/api/profiles/${encodeURIComponent(username)}/block`, { method: 'DELETE' });
+      await loadBlockedProfiles();
+      renderMyProfile?.();
+      showNotification(`${username} was unblocked`, 'settings', { position: 'bottom-right' });
+    } catch (error) { notifyError(error); }
+  };
+
   window.renderProfileSearchResults = async query => {
     const results = document.getElementById('profile-search-results'); const input = document.getElementById('profile-directory-search-input');
     if (!results || !input || !String(query).trim()) { hideProfileSearchResults(); return; }
@@ -1059,9 +1250,13 @@
   window.toggleViewedProfileFollow = async () => {
     const profile = getViewedProfileRecord(); if (!profile || profile.isOwn) return;
     try {
-      const method = profile.following ? 'DELETE' : 'PUT';
+      const wasFollowing = Boolean(profile.following);
+      const method = wasFollowing ? 'DELETE' : 'PUT';
       const payload = await api(`/api/profiles/${encodeURIComponent(profile.username)}/follow`, { method });
-      profile.following = payload.following; updateProfileFollowButton(profile); await loadFollowedProfiles();
+      profile.following = payload.following; profile.stats = payload.stats || profile.stats;
+      if (real.profile?.stats) real.profile.stats.following = Math.max(0, Number(real.profile.stats.following || 0) + (payload.following ? 1 : -1));
+      updateProfileFollowButton(profile); enhanceProfileUI(); await loadFollowedProfiles();
+      showNotification(`${payload.following ? 'Now following' : 'Unfollowed'} ${profile.username}`, 'follow', { title: payload.following ? 'Profile followed' : 'Profile unfollowed', position: 'bottom-left' });
     } catch (error) { notifyError(error); }
   };
   window.updateProfileFollowButton = profile => {
@@ -1079,6 +1274,262 @@
     try { await loadFollowedProfiles(); panel.innerHTML = `<div class="profile-followed-heading"><span>Followed Users</span><span>${real.followedProfiles.length} followed</span></div>${real.followedProfiles.length ? `<div class="profile-followed-list">${real.followedProfiles.map(profile => `<button class="profile-followed-card" data-followed="${escapeHTML(profile.username)}"><img class="profile-followed-avatar" src="${escapeHTML(profile.avatar)}"><span class="profile-followed-copy"><strong>${escapeHTML(profile.username)}</strong><span>View profile</span></span><i class="fa-solid fa-chevron-right"></i></button>`).join('')}</div>` : '<div class="profile-followed-empty">No followed profiles yet.</div>'}`; panel.querySelectorAll('[data-followed]').forEach(button => button.addEventListener('click', () => viewProfile(button.dataset.followed))); }
     catch (error) { panel.innerHTML = `<div class="profile-followed-empty">${escapeHTML(error.message)}</div>`; }
   };
+
+  async function loadBackendNotifications({ announce = false } = {}) {
+    if (!accountState.signedIn) {
+      real.notifications = [];
+      messageNotificationCount = 0;
+      updateNotificationBadge?.();
+      return;
+    }
+    const payload = await api('/api/notifications');
+    const incoming = (payload.notifications || []).sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const unseenUnread = incoming.filter(item => !item.readAt && !real.notificationIds.has(item.id));
+    if (unseenUnread.length) {
+      notificationsMarkedAsRead = false;
+      localStorage.setItem('notificationsMarkedAsRead', 'false');
+    }
+    if (announce && real.notificationsInitialized) {
+      for (const item of unseenUnread) {
+        if (item.type === 'message') showNotification(`${item.metadata?.senderUsername || 'Someone'}: ${item.message}`, 'message', { title: 'New private message', position: 'bottom-left' });
+        if (item.type === 'follow') showNotification(`${item.metadata?.followerUsername || 'Someone'} followed you`, 'follow', { title: 'New follower', position: 'bottom-left' });
+      }
+    }
+    real.notifications = incoming;
+    real.notificationIds = new Set(incoming.map(item => item.id));
+    real.notificationsInitialized = true;
+    messageNotificationCount = incoming.filter(item => item.type === 'message' && !item.readAt).length;
+    const backendLive = incoming.filter(item => item.type === 'live').map(item => ({
+      username: item.metadata?.name || item.metadata?.username || 'YouTube creator',
+      channelUsername: item.metadata?.username || item.metadata?.channelId || '',
+      title: item.metadata?.title || item.message || 'Live now',
+      avatar: item.metadata?.avatar || '', thumbnail: item.metadata?.thumbnail || '',
+      platform: item.metadata?.platform || 'youtube', id: item.metadata?.videoId || '', videoId: item.metadata?.videoId || '',
+      channelId: item.metadata?.channelId || '',
+      viewers: Number.isFinite(Number(item.metadata?.viewers)) ? compact(item.metadata.viewers) : 'LIVE',
+      startedAt: item.metadata?.startedAt || '', createdAt: item.createdAt, backendNotificationId: item.id
+    })).filter(item => !isLiveNotificationDismissed?.(item));
+    const activeLive = (mockLiveStreamers || []).filter(item => !item.backendNotificationId);
+    const mergedLive = new Map();
+    [...backendLive, ...activeLive].forEach(item => {
+      const key = liveNotificationIdentity?.(item)?.key || `${item.platform}:${item.videoId || item.channelUsername}`;
+      if (!mergedLive.has(key)) mergedLive.set(key, item);
+    });
+    mockLiveStreamers = [...mergedLive.values()].sort((a, b) => new Date(b.createdAt || b.startedAt || 0) - new Date(a.createdAt || a.startedAt || 0));
+    saveLiveNotifications?.();
+    calculateNotificationCounts?.();
+    updateNotificationBadge?.();
+    if (document.getElementById('notificationsMenu')?.classList.contains('active') && document.getElementById('tab-messages')?.style.color?.includes('accent')) window.renderMessageNotifications?.(document.getElementById('notification-content'));
+  }
+
+  window.markBackendNotificationsRead = async () => {
+    try { await api('/api/notifications/read', { method: 'POST', body: '{}' }); await loadBackendNotifications(); }
+    catch (error) { console.error(error); }
+  };
+
+  window.deleteBackendNotification = async notificationId => {
+    if (!notificationId) return;
+    try { await api(`/api/notifications/${encodeURIComponent(notificationId)}`, { method: 'DELETE' }); }
+    catch (error) { console.error(error); }
+  };
+
+  window.renderMessageNotifications = container => {
+    if (!container) return;
+    const messages = real.notifications.filter(item => item.type === 'message');
+    messageNotificationCount = messages.filter(item => !item.readAt).length;
+    updateNotificationBadge?.();
+    container.innerHTML = messages.length ? messages.map(item => `<article class="notification-card-hover notification-menu-card ${item.readAt ? '' : 'is-unread'}" data-message-notification="${escapeHTML(item.id)}" data-message-user="${escapeHTML(item.metadata?.senderUsername || '')}"><img class="notification-menu-icon" src="${escapeHTML(item.metadata?.senderAvatarUrl || '/logos and assets/defualt_profile_pfp.png')}" alt=""><div class="notification-menu-copy"><strong>${escapeHTML(item.metadata?.senderUsername || 'Multistreams user')}</strong><p>${escapeHTML(item.message)}</p><small style="display:block;margin-top:6px;color:var(--text-muted);font-size:9px;">${new Date(item.createdAt).toLocaleString()}</small></div><span class="notification-relative-time">${formatRelativeNotificationTime(item.createdAt)}</span><button class="notification-close-btn" type="button" data-delete-message-notification="${escapeHTML(item.id)}" aria-label="Delete message notification">✕</button></article>`).join('') : '<div style="padding:40px 20px;text-align:center;color:var(--text-muted);font-size:14px;">No message notifications yet.</div>';
+    container.querySelectorAll('[data-message-notification]').forEach(card => card.addEventListener('click', event => {
+      if (event.target.closest('[data-delete-message-notification]')) return;
+      openPrivateConversation(card.dataset.messageUser);
+    }));
+    container.querySelectorAll('[data-delete-message-notification]').forEach(button => button.addEventListener('click', async event => {
+      event.stopPropagation();
+      try { await api(`/api/notifications/${encodeURIComponent(button.dataset.deleteMessageNotification)}`, { method: 'DELETE' }); await loadBackendNotifications(); window.renderMessageNotifications(container); }
+      catch (error) { notifyError(error); }
+    }));
+  };
+
+  function renderPrivateMessages(messages) {
+    const history = document.getElementById('private-message-history');
+    if (!history) return;
+    history.innerHTML = messages.length ? messages.map(message => `<div class="private-message-bubble ${message.outgoing ? 'outgoing' : ''}"><p>${escapeHTML(message.body)}</p><time datetime="${escapeHTML(message.createdAt)}">${new Date(message.createdAt).toLocaleString()}</time></div>`).join('') : '<div class="profile-followed-empty" style="margin:auto;">No messages yet. Start the conversation.</div>';
+    history.scrollTop = history.scrollHeight;
+  }
+
+  window.openPrivateConversation = async username => {
+    if (!accountState.signedIn || !username) return;
+    try {
+      document.getElementById('notificationsMenu')?.classList.remove('active');
+      document.getElementById('private-message-modal')?.classList.add('active');
+      document.getElementById('private-message-history').innerHTML = '<div class="service-status-loading"><span class="global-search-spinner"></span>Loading messages…</div>';
+      const payload = await api(`/api/messages/${encodeURIComponent(username)}`);
+      real.activeConversation = payload.conversation;
+      real.activeConversationUsername = payload.conversation.user.username;
+      document.getElementById('private-message-title').textContent = payload.conversation.user.username;
+      document.getElementById('private-message-avatar').src = payload.conversation.user.avatarUrl || '/logos and assets/defualt_profile_pfp.png';
+      renderPrivateMessages(payload.messages || []);
+      await loadBackendNotifications();
+      document.getElementById('private-message-input')?.focus();
+    } catch (error) { closePrivateMessageModal?.(null, true); notifyError(error); }
+  };
+
+  window.openViewedProfileConversation = () => {
+    const profile = getViewedProfileRecord();
+    if (profile && !profile.isOwn) window.openPrivateConversation(profile.username);
+  };
+
+  window.closePrivateMessageModal = (event, force = false) => {
+    const modal = document.getElementById('private-message-modal');
+    if (!modal || (!force && event?.target !== modal)) return;
+    modal.classList.remove('active');
+    real.activeConversation = null;
+    real.activeConversationUsername = '';
+  };
+
+  window.sendPrivateMessage = async event => {
+    event?.preventDefault();
+    const input = document.getElementById('private-message-input');
+    const message = input?.value.trim() || '';
+    if (!message || !real.activeConversationUsername) return;
+    try {
+      input.disabled = true;
+      await api(`/api/messages/${encodeURIComponent(real.activeConversationUsername)}`, { method: 'POST', body: JSON.stringify({ message }) });
+      input.value = '';
+      const payload = await api(`/api/messages/${encodeURIComponent(real.activeConversationUsername)}`);
+      renderPrivateMessages(payload.messages || []);
+    } catch (error) { notifyError(error); }
+    finally { input.disabled = false; input.focus(); }
+  };
+
+  document.addEventListener('pointerdown', event => {
+    const shell = document.getElementById('privacy-block-search-shell');
+    if (shell && !shell.contains(event.target)) hidePrivacyBlockSearchResults();
+  }, true);
+
+  function renderProfileAbout(profile) {
+    const summary = document.getElementById('profile-about-summary');
+    const panelContainer = document.getElementById('profile-about-panels');
+    if (!summary || !panelContainer || !profile) return;
+    const socials = Object.entries(profile.socialLinks || {});
+    summary.innerHTML = `<h3>About ${escapeHTML(profile.username)} <span style="color:#4ade80;font-size:10px;">${Number(profile.stats?.followers || 0).toLocaleString()} followers</span></h3><p>${escapeHTML(profile.bio || 'This user has not added a bio yet.')}</p>${socials.length ? `<div class="profile-about-socials">${socials.map(([platform, url]) => `<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">${getPlatformIcon(platform)}<span>${escapeHTML(platform)}</span></a>`).join('')}</div>` : ''}`;
+    const owns = Boolean(profile.isOwn);
+    document.getElementById('profile-add-panel-button').hidden = !owns;
+    const items = profile.panels || [];
+    panelContainer.innerHTML = items.length ? items.map(panel => `<article class="profile-about-panel" draggable="${owns}" data-profile-panel="${escapeHTML(panel.id)}">${panel.imageUrl ? `<img src="${escapeHTML(panel.imageUrl)}" alt="">` : ''}${owns ? `<button class="profile-about-panel-edit" type="button" data-edit-panel="${escapeHTML(panel.id)}" aria-label="Edit panel"><i class="fa-solid fa-pen"></i></button>` : ''}<div class="profile-about-panel-copy"><h4>${escapeHTML(panel.title || 'About')}</h4>${panel.description ? `<p>${escapeHTML(panel.description)}</p>` : ''}${panel.url ? `<a href="${escapeHTML(panel.url)}" target="_blank" rel="noopener noreferrer" style="display:inline-block;margin-top:8px;color:var(--accent);font-size:9px;">Visit link <i class="fa-solid fa-arrow-up-right-from-square"></i></a>` : ''}</div></article>`).join('') : `<button class="profile-about-panel" type="button" ${owns ? 'onclick="openProfilePanelEditor()"' : 'disabled'} style="display:grid;place-items:center;width:100%;color:var(--text-muted);font-size:28px;cursor:${owns ? 'pointer' : 'default'};">${owns ? '+' : '<span style="font-size:10px;">No about panels yet.</span>'}</button>`;
+    panelContainer.querySelectorAll('[data-edit-panel]').forEach(button => button.addEventListener('click', () => openProfilePanelEditor(button.dataset.editPanel)));
+    if (owns) bindProfilePanelReorder(panelContainer);
+  }
+
+  function bindProfilePanelReorder(container) {
+    let dragged = null;
+    container.querySelectorAll('[data-profile-panel]').forEach(card => {
+      card.addEventListener('dragstart', () => { dragged = card; card.style.opacity = '.45'; });
+      card.addEventListener('dragend', async () => {
+        card.style.opacity = '';
+        const ids = [...container.querySelectorAll('[data-profile-panel]')].map(item => item.dataset.profilePanel);
+        try { const payload = await api('/api/profile/panels/reorder', { method: 'PUT', body: JSON.stringify({ ids }) }); real.profile.panels = payload.panels || []; }
+        catch (error) { notifyError(error); }
+      });
+      card.addEventListener('dragover', event => { event.preventDefault(); if (dragged && dragged !== card) container.insertBefore(dragged, card); });
+    });
+  }
+
+  function enhanceProfileUI() {
+    const profile = getViewedProfileRecord();
+    if (!profile) return;
+    const stats = profile.stats || { layouts: profile.layouts?.length || 0, followers: 0, following: 0 };
+    const statRoot = document.getElementById('my-profile-stats');
+    if (statRoot) statRoot.innerHTML = `<button type="button" data-profile-stat="layouts"><strong>${Number(stats.layouts || 0).toLocaleString()}</strong> layouts</button><button type="button" onclick="openProfileUserList('followers')"><strong>${Number(stats.followers || 0).toLocaleString()}</strong> followers</button><button type="button" onclick="openProfileUserList('following')"><strong>${Number(stats.following || 0).toLocaleString()}</strong> following</button>`;
+    const allowed = profile.backendAccess?.allowed !== false;
+    const messageButton = document.getElementById('profile-message-button');
+    if (messageButton) messageButton.hidden = profile.isOwn || !allowed;
+    const moreButton = document.getElementById('profile-more-toggle');
+    if (moreButton) moreButton.hidden = profile.isOwn || !allowed;
+    const clipsConnected = Boolean(profile.connections?.twitch);
+    const videosConnected = Boolean(profile.connections?.youtube);
+    document.getElementById('profile-tab-clips').hidden = !clipsConnected;
+    document.getElementById('profile-tab-videos').hidden = !videosConnected;
+    renderProfileAbout(profile);
+  }
+
+  const baseRenderMyProfile = window.renderMyProfile;
+  window.renderMyProfile = (...args) => { const value = baseRenderMyProfile?.(...args); enhanceProfileUI(); return value; };
+
+  window.switchProfileTab = tab => {
+    const profile = getViewedProfileRecord();
+    const allowed = new Set(['layouts', 'badges', 'about']);
+    if (profile?.connections?.twitch) allowed.add('clips');
+    if (profile?.connections?.youtube) allowed.add('videos');
+    activeProfileTab = allowed.has(tab) ? tab : 'layouts';
+    for (const name of ['layouts', 'badges', 'clips', 'videos', 'about']) {
+      document.getElementById(`profile-tab-${name}`)?.classList.toggle('active', activeProfileTab === name);
+      document.getElementById(`profile-content-${name}`)?.classList.toggle('active', activeProfileTab === name);
+    }
+    if (activeProfileTab === 'clips' || activeProfileTab === 'videos') loadProfileMedia(activeProfileTab);
+    if (activeProfileTab === 'about') renderProfileAbout(profile);
+  };
+
+  async function loadProfileMedia(type) {
+    const profile = getViewedProfileRecord();
+    const container = document.getElementById(type === 'clips' ? 'profile-clips-grid' : 'profile-videos-grid');
+    if (!profile || !container) return;
+    container.innerHTML = '<div class="service-status-loading" style="grid-column:1/-1"><span class="global-search-spinner"></span>Loading real media…</div>';
+    try {
+      const payload = await api(`/api/profiles/${encodeURIComponent(profile.username)}/${type}`);
+      const items = (payload.items || []).map(item => ({ ...item, username: item.username || item.name, daysAgo: Math.max(0, Math.floor((Date.now() - new Date(item.createdAt || Date.now()).getTime()) / 86400000)), duration: browseMediaDuration(item), videoEmbed: item.embedUrl }));
+      container.innerHTML = items.length ? renderBrowseClipCards(items) : `<div class="profile-followed-empty" style="grid-column:1/-1">No ${type} are available right now.</div>`;
+      bindBrowseClipCards(container);
+    } catch (error) { container.innerHTML = `<div class="profile-followed-empty" style="grid-column:1/-1">${escapeHTML(error.message)}</div>`; }
+  }
+
+  window.openProfileUserList = async type => {
+    const profile = getViewedProfileRecord();
+    if (!profile) return;
+    const modal = document.getElementById('profile-user-list-modal');
+    const list = document.getElementById('profile-user-list');
+    document.getElementById('profile-user-list-title').textContent = type === 'followers' ? 'Followers' : 'Following';
+    modal.classList.add('active');
+    list.innerHTML = '<div class="service-status-loading"><span class="global-search-spinner"></span>Loading users…</div>';
+    try {
+      const payload = await api(`/api/profiles/${encodeURIComponent(profile.username)}/${type}`);
+      list.innerHTML = payload.profiles.length ? payload.profiles.map(user => `<button class="profile-user-list-card" data-profile-user="${escapeHTML(user.username)}"><img src="${escapeHTML(user.avatarUrl)}" alt=""><strong>${escapeHTML(user.username)}</strong></button>`).join('') : `<div class="profile-followed-empty">No ${type} yet.</div>`;
+      list.querySelectorAll('[data-profile-user]').forEach(button => button.addEventListener('click', async () => { closeProfileUserList(null, true); await viewProfile(button.dataset.profileUser); }));
+    } catch (error) { list.innerHTML = `<div class="profile-followed-empty">${escapeHTML(error.message)}</div>`; }
+  };
+  window.closeProfileUserList = (event, force = false) => { const modal = document.getElementById('profile-user-list-modal'); if (modal && (force || event?.target === modal)) modal.classList.remove('active'); };
+
+  window.toggleProfileMoreMenu = event => { event?.stopPropagation(); const menu = document.getElementById('profile-more-menu'); const open = !menu.classList.contains('active'); menu.classList.toggle('active', open); document.getElementById('profile-more-toggle')?.setAttribute('aria-expanded', String(open)); };
+  window.reportViewedProfile = () => { const profile = getViewedProfileRecord(); document.getElementById('profile-more-menu')?.classList.remove('active'); openFeedbackModal?.(); setFeedbackCategory?.('general'); const input = document.getElementById('feedback-message'); if (input && profile) input.value = `Report profile: ${profile.username}\nProfile URL: ${location.origin}/profile/${encodeURIComponent(profile.username)}\n\nReason: `; };
+  window.blockViewedProfile = async () => { const profile = getViewedProfileRecord(); if (!profile || profile.isOwn) return; try { await api(`/api/profiles/${encodeURIComponent(profile.username)}/block`, { method: 'PUT' }); await loadBlockedProfiles(); closeMyProfileModal?.(null, true); showNotification(`${profile.username} was blocked`, 'follow', { position: 'bottom-left' }); } catch (error) { notifyError(error); } };
+
+  window.openProfilePanelEditor = panelId => {
+    const panel = (real.profile?.panels || []).find(item => item.id === panelId) || null;
+    document.getElementById('profile-panel-id').value = panel?.id || '';
+    document.getElementById('profile-panel-title').value = panel?.title || '';
+    document.getElementById('profile-panel-image').value = panel?.imageUrl || '';
+    document.getElementById('profile-panel-description').value = panel?.description || '';
+    document.getElementById('profile-panel-url').value = panel?.url || '';
+    document.getElementById('profile-panel-delete').hidden = !panel;
+    document.getElementById('profile-panel-editor-modal').classList.add('active');
+  };
+  window.closeProfilePanelEditor = (event, force = false) => { const modal = document.getElementById('profile-panel-editor-modal'); if (modal && (force || event?.target === modal)) modal.classList.remove('active'); };
+  window.saveProfilePanel = async event => { event?.preventDefault(); const id = document.getElementById('profile-panel-id').value; const body = { title: document.getElementById('profile-panel-title').value, imageUrl: document.getElementById('profile-panel-image').value, description: document.getElementById('profile-panel-description').value, url: document.getElementById('profile-panel-url').value }; try { const payload = await api(id ? `/api/profile/panels/${encodeURIComponent(id)}` : '/api/profile/panels', { method: id ? 'PATCH' : 'POST', body: JSON.stringify(body) }); real.profile.panels = payload.panels || []; if (real.viewedProfile?.isOwn) real.viewedProfile.panels = real.profile.panels; closeProfilePanelEditor(null, true); renderProfileAbout(real.profile); showNotification('About panel saved', 'saved', { position: 'bottom-right' }); } catch (error) { notifyError(error); } };
+  window.deleteProfilePanel = async () => { const id = document.getElementById('profile-panel-id').value; if (!id) return; try { const payload = await api(`/api/profile/panels/${encodeURIComponent(id)}`, { method: 'DELETE' }); real.profile.panels = payload.panels || []; real.viewedProfile.panels = real.profile.panels; closeProfilePanelEditor(null, true); renderProfileAbout(real.profile); showNotification('About panel removed', 'deleted', { position: 'bottom-right' }); } catch (error) { notifyError(error); } };
+
+  window.openServiceStatusModal = async () => {
+    const modal = document.getElementById('service-status-modal');
+    const content = document.getElementById('service-status-content');
+    modal.classList.add('active');
+    content.innerHTML = '<div class="service-status-loading"><span class="global-search-spinner"></span>Checking services…</div>';
+    try {
+      const payload = await api('/api/status');
+      const labels = { operational: 'All systems operational', degraded: 'Some systems are degraded', down: 'Service interruption detected' };
+      const icon = payload.status === 'operational' ? 'fa-circle-check' : 'fa-triangle-exclamation';
+      content.innerHTML = `<div class="service-status-overall"><i class="fa-solid ${icon}"></i><div><strong>${labels[payload.status] || 'Service status'}</strong><span>${payload.services.length} monitored service${payload.services.length === 1 ? '' : 's'} · Last checked ${new Date(payload.checkedAt).toLocaleString()}</span></div></div>${payload.warning ? `<div style="color:#fbbf24;font-size:10px;">${escapeHTML(payload.warning)}</div>` : ''}<div style="display:grid;gap:8px;">${payload.services.map(service => `<div class="service-status-row"><div><strong>${escapeHTML(service.name)}</strong><span style="display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;">${escapeHTML(service.url)}</span></div><span>${service.uptime === null ? 'Live check' : `${Number(service.uptime).toFixed(3)}% uptime`}</span><span>${Number(service.responseTime || 0)} ms response</span><span class="service-status-state">${escapeHTML(service.status)}</span></div>`).join('')}</div>`;
+    } catch (error) { content.innerHTML = `<div class="profile-followed-empty"><i class="fa-solid fa-triangle-exclamation"></i><br>${escapeHTML(error.message)}<br><button class="secondary-btn" style="margin-top:12px" onclick="openServiceStatusModal()">Try again</button></div>`; }
+  };
+  window.closeServiceStatusModal = (event, force = false) => { const modal = document.getElementById('service-status-modal'); if (modal && (force || event?.target === modal)) modal.classList.remove('active'); };
 
   // Backend Gemini proxy; the API key never reaches the browser.
   window.getAISearchAPIKey = () => 'backend-managed';
@@ -1138,8 +1589,9 @@
   }
   setInterval(refreshActiveStreamData, 60_000);
   setInterval(() => { if (accountState.signedIn) loadConnectionsAndFollowing().catch(() => {}); }, 90_000);
+  setInterval(() => { if (accountState.signedIn && document.visibilityState === 'visible') loadBackendNotifications({ announce: true }).catch(() => {}); }, 30_000);
 
-  window.MS_API = { api, real, bootstrap, refreshSession, loadConnectionsAndFollowing, loadFeatured };
+  window.MS_API = { api, real, bootstrap, refreshSession, loadBlockedProfiles, loadConnectionsAndFollowing, loadFeatured };
   hydrateDirectProfilePath().catch(error => notifyError(error, 'This profile could not be loaded.'));
   bootstrap();
 })();

@@ -1,6 +1,7 @@
 import { HttpError, clearSessionCookie, json, readJson, safeRedirectPath, sessionCookie } from '../lib/http.js';
 import { createSession, deleteSession, nowIso, optionalSession, rateLimit, requireSession } from '../lib/db.js';
 import { decrypt, encrypt, hashPassword, otpauthUri, randomId, sha256, verifyPassword, verifyTotp } from '../lib/crypto.js';
+import { saveConnection } from './oauth.js';
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_PATTERN = /^[A-Za-z0-9_][A-Za-z0-9_.-]{2,29}$/;
@@ -87,6 +88,16 @@ async function finishTotpLogin(request, env) {
   if (!challenge?.two_factor_secret) throw new HttpError(400, 'The sign-in challenge expired. Please sign in again.', 'challenge_expired');
   const secret = await decrypt(challenge.two_factor_secret, env.TOKEN_ENCRYPTION_KEY);
   if (!(await verifyTotp(secret, body.code))) throw new HttpError(401, 'The authenticator code is incorrect.', 'invalid_totp');
+  if (challenge.secret) {
+    try {
+      const pending = JSON.parse(await decrypt(challenge.secret, env.TOKEN_ENCRYPTION_KEY));
+      if (pending.platform === 'youtube' && pending.identity && pending.tokens) {
+        await saveConnection(env, challenge.user_id, 'youtube', pending.identity, pending.tokens, pending.scopes || []);
+      }
+    } catch (error) {
+      console.warn(JSON.stringify({ event: 'pending_google_connection_failed', message: error?.message || '' }));
+    }
+  }
   await env.DB.prepare('DELETE FROM auth_challenges WHERE id = ?1').bind(ticket).run();
   const token = await createSession(request, env, challenge.user_id);
   const user = await env.DB.prepare('SELECT * FROM users WHERE id = ?1').bind(challenge.user_id).first();
