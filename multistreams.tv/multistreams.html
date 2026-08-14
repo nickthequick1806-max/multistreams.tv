@@ -319,8 +319,8 @@
     text-align: center;
   }
   .suggested-card .suggested-avatar { width: 48px; height: 48px; border-radius: 50%; margin-bottom: 8px; }
-  .suggested-card .name { font-weight: bold; font-size: 14px; margin-bottom: 4px; color: var(--text-main); }
-  .suggested-name-row { display: flex; max-width: 100%; align-items: center; justify-content: center; gap: 6px; }
+  .suggested-card .name { flex: 0 1 auto; min-width: 0; max-width: calc(100% - 22px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: bold; font-size: 14px; margin-bottom: 4px; color: var(--text-main); }
+  .suggested-name-row { display: inline-flex; width: fit-content; max-width: 100%; min-width: 0; overflow: hidden; align-items: center; justify-content: flex-start; gap: 6px; }
   .suggested-platform-icon { display: grid; width: 16px; height: 16px; flex: 0 0 16px; place-items: center; margin-bottom: 4px; }
   .suggested-platform-icon svg { width: 14px; height: 14px; }
   .suggested-card .cat { font-size: 12px; color: var(--text-muted); margin-bottom: 4px; }
@@ -5166,8 +5166,9 @@ header {
 .notification-menu-card.is-unread { border-left: 2px solid var(--accent); }
 #notificationsMenu > div:nth-child(2) { gap: 8px !important; justify-content: space-evenly !important; }
 #notificationsMenu > div:nth-child(2) > div { padding-inline: 10px !important; }
-.sidebar-show-toggle { display: inline-flex; margin: 5px 8px 7px; padding: 3px 0; border: 0; background: transparent; color: #a78bfa; cursor: pointer; font: inherit; font-size: 11px; font-weight: 720; }
-.sidebar-show-toggle:hover { color: var(--accent); }
+.sidebar-show-toggle { display: inline-flex; margin: 5px 8px 7px; padding: 3px 0; border: 0; background: transparent; color: var(--accent); cursor: pointer; font: inherit; font-size: 11px; font-weight: 720; transition: filter .15s ease, opacity .15s ease; }
+.sidebar-show-toggle:hover { color: var(--accent); filter: brightness(1.18); }
+.sidebar-show-toggle:focus-visible { border-radius: 3px; outline: 2px solid var(--accent); outline-offset: 2px; }
 .recommended-category { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px; border-radius: 8px; cursor: pointer; }
 .recommended-category:hover { background: var(--bg-hover); }
 .recommended-category img { width: 30px; height: 40px; border-radius: 4px; object-fit: cover; background: var(--surface-raised); }
@@ -5181,7 +5182,7 @@ header {
 .browse-header h2 { margin-right: auto; }
 .browse-status-button { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-raised); color: var(--text-main); cursor: pointer; font: inherit; font-size: 11px; font-weight: 720; }
 .service-status-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 0 3px rgba(34,197,94,.12); }
-.profile-more-control { position: relative; }
+.profile-more-control { position: relative; margin-left: auto; margin-right: 6px; }
 .profile-more-menu { position: absolute; z-index: 20; top: calc(100% + 7px); left: 0; display: none; width: 160px; padding: 6px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); box-shadow: 0 16px 38px rgba(0,0,0,.38); }
 .profile-more-menu.active { display: grid; gap: 3px; }
 .profile-more-menu button { display: flex; align-items: center; gap: 9px; padding: 9px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text-main); cursor: pointer; font: inherit; font-size: 11px; text-align: left; }
@@ -5197,6 +5198,8 @@ header {
 .profile-badges-heading strong { font-size: 12px; }
 .profile-badges-heading .profile-watch-summary { margin: 0; color: var(--text-muted); font-size: 10px; }
 .profile-media-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+.profile-media-grid > .browse-clip-grid { grid-column: 1 / -1; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 11px; }
+.profile-media-grid .browse-clip-card { min-width: 0; }
 .profile-media-card { overflow: hidden; padding: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-raised); color: inherit; cursor: pointer; text-align: left; }
 .profile-media-thumb { position: relative; aspect-ratio: 16/9; background: #080b11; }
 .profile-media-thumb img { width: 100%; height: 100%; object-fit: cover; }
@@ -5209,6 +5212,9 @@ header {
 .profile-about-summary p { margin: 8px 0 0; color: var(--text-muted); font-size: 11px; line-height: 1.55; }
 .profile-about-socials { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .profile-about-socials a { display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 7px; color: var(--text-main); font-size: 9px; text-decoration: none; }
+.profile-about-socials a:hover { border-color: color-mix(in srgb, var(--accent) 42%, var(--border)); background: var(--bg-hover); }
+.profile-about-social-icon { display: grid; width: 14px; height: 14px; flex: 0 0 14px; place-items: center; }
+.profile-about-social-icon svg { display: block; width: 13px; height: 13px; }
 .profile-about-toolbar { display: flex; align-items: center; justify-content: space-between; margin: 14px 0 10px; }
 .profile-about-toolbar strong { font-size: 12px; }
 .profile-about-panels { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 11px; }
@@ -5233,6 +5239,10 @@ header {
 .private-message-compose { display: flex; gap: 9px; padding: 12px; border-top: 1px solid var(--border); }
 .private-message-compose textarea { flex: 1; resize: none; min-height: 38px; max-height: 100px; padding: 9px 11px; }
 .profile-user-list-shell { width: min(520px, 94vw); max-height: 80vh; padding: 0; overflow: hidden; }
+.profile-user-list-header { min-height: 64px; padding: 14px 16px; }
+.profile-user-list-heading { display: flex; align-items: center; gap: 10px; padding: 2px 0 0 2px; }
+.profile-user-list-heading-icon { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: 9px; background: color-mix(in srgb, var(--accent) 10%, var(--surface-soft)); color: var(--accent); font-size: 12px; }
+.profile-user-list-heading h2 { margin: 0; line-height: 1; }
 .profile-user-list { display: grid; gap: 7px; overflow-y: auto; max-height: 62vh; padding: 12px; }
 .profile-user-list-card { display: flex; align-items: center; gap: 10px; padding: 9px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-soft); color: var(--text-main); cursor: pointer; text-align: left; }
 .profile-user-list-card img { width: 38px; height: 38px; border-radius: 50%; object-fit: cover; }
@@ -5242,27 +5252,63 @@ header {
 .profile-panel-editor-shell input,.profile-panel-editor-shell textarea { width: 100%; padding: 9px 10px; resize: vertical; }
 .profile-panel-editor-actions { display: flex; justify-content: flex-end; gap: 8px; }
 .profile-panel-editor-actions .danger { margin-right: auto; color: #fb7185; }
-.service-status-shell { width: min(900px, 95vw); max-height: 88vh; padding: 0; overflow: hidden; }
-.service-status-header p { margin: 4px 0 0; color: var(--text-muted); font-size: 9px; }
-.service-status-content { display: grid; gap: 12px; overflow-y: auto; max-height: 72vh; padding: 16px; }
-.service-status-overall { display: flex; align-items: center; gap: 12px; padding: 15px; border: 1px solid rgba(34,197,94,.35); border-radius: 11px; background: rgba(34,197,94,.08); }
-.service-status-overall i { color: #4ade80; font-size: 22px; }
+.profile-panel-delete-button { display: inline-grid; width: 40px; min-width: 40px; height: 40px; padding: 0; place-items: center; border-color: rgba(251,113,133,.3); }
+.profile-panel-delete-button:hover { border-color: #fb7185; background: rgba(251,113,133,.1); color: #fb7185; }
+.service-status-shell { width: min(1040px, 95vw); max-height: 90vh; padding: 0; overflow: hidden; border-radius: 17px; }
+#service-status-modal { z-index: 12000 !important; }
+.service-status-header { min-height: 78px; padding: 15px 22px; }
+.service-status-heading { display: flex; min-width: 0; align-items: center; gap: 13px; }
+.service-status-title-icon { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border)); border-radius: 11px; background: color-mix(in srgb, var(--accent) 9%, var(--surface-soft)); color: var(--accent); font-size: 16px; }
+.service-status-heading h2 { margin: 0; line-height: 1.15; }
+.service-status-header p { margin: 5px 0 0; color: var(--text-muted); font-size: 10px; line-height: 1.35; }
+.service-status-header > .icon-btn { width: 34px; height: 34px; flex: 0 0 34px; }
+.service-status-content { display: grid; gap: 13px; overflow-y: auto; max-height: calc(90vh - 78px); padding: 20px 22px 22px; }
+.service-status-overall { display: flex; align-items: center; gap: 13px; padding: 17px 18px; border: 1px solid rgba(34,197,94,.35); border-radius: 12px; background: linear-gradient(100deg, rgba(34,197,94,.1), rgba(34,197,94,.045)); }
+.service-status-overall > i { display: grid; width: 34px; height: 34px; flex: 0 0 34px; place-items: center; border-radius: 50%; background: rgba(34,197,94,.14); color: #4ade80; font-size: 17px; }
 .service-status-overall strong,.service-status-overall span { display: block; }
 .service-status-overall strong { font-size: 13px; }
 .service-status-overall span { margin-top: 3px; color: var(--text-muted); font-size: 9px; }
-.service-status-row { display: grid; grid-template-columns: minmax(150px,1.5fr) 90px 100px 90px; gap: 10px; align-items: center; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface-soft); }
+.service-status-warning { padding: 10px 12px; border: 1px solid rgba(251,191,36,.28); border-radius: 9px; background: rgba(251,191,36,.06); color: #fbbf24; font-size: 10px; }
+.service-status-list { display: grid; gap: 9px; }
+.service-status-row { display: grid; grid-template-columns: minmax(155px,1.2fr) 90px minmax(210px,2fr) 90px 72px; gap: 13px; align-items: center; min-height: 68px; padding: 13px 15px; border: 1px solid var(--border); border-radius: 11px; background: color-mix(in srgb, var(--surface-soft) 88%, transparent); transition: border-color .16s ease, background .16s ease, transform .16s ease; }
+.service-status-row:hover { border-color: color-mix(in srgb, var(--accent) 28%, var(--border)); background: var(--surface-soft); transform: translateY(-1px); }
 .service-status-row strong { font-size: 10px; }
 .service-status-row span { color: var(--text-muted); font-size: 9px; }
 .service-status-state { color: #4ade80 !important; font-weight: 760; text-transform: capitalize; }
+.service-status-state.degraded { color: #fbbf24 !important; }
+.service-status-state.down { color: #fb7185 !important; }
+.service-status-timeline { display: grid; grid-template-columns: repeat(30, minmax(3px, 1fr)); gap: 3px; align-items: center; min-width: 0; }
+.service-status-pill { position: relative; display: block; height: 19px; border-radius: 3px; background: #4b5563; box-shadow: inset 0 0 0 1px rgba(255,255,255,.035); cursor: help; }
+.service-status-pill.operational { background: #22c55e; }
+.service-status-pill.degraded { background: #fbbf24; }
+.service-status-pill.down { background: #ef4444; }
+.service-status-pill::after { content: attr(data-tooltip); position: absolute; bottom: calc(100% + 9px); left: 50%; z-index: 20; width: max-content; max-width: 230px; padding: 7px 9px; transform: translate(-50%, 4px); border: 1px solid var(--border); border-radius: 7px; background: #111318; color: #f4f4f5; box-shadow: 0 10px 26px rgba(0,0,0,.42); font-size: 9px; font-weight: 650; line-height: 1.35; opacity: 0; pointer-events: none; transition: opacity .14s ease, transform .14s ease; }
+.service-status-pill::before { content: ""; position: absolute; bottom: calc(100% + 5px); left: 50%; z-index: 21; width: 7px; height: 7px; transform: translate(-50%, 3px) rotate(45deg); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); background: #111318; opacity: 0; pointer-events: none; transition: opacity .14s ease, transform .14s ease; }
+.service-status-pill:hover::after,.service-status-pill:focus-visible::after { opacity: 1; transform: translate(-50%, 0); }
+.service-status-pill:hover::before,.service-status-pill:focus-visible::before { opacity: 1; transform: translate(-50%, 0) rotate(45deg); }
+.service-status-pill:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.service-status-incidents { display: grid; gap: 8px; margin-top: 3px; }
+.service-status-incidents h3 { margin: 0; color: var(--text-main); font-size: 11px; }
+.service-status-incident { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 9px; background: var(--surface-soft); }
+.service-status-incident strong { display: block; font-size: 10px; }
+.service-status-incident span { color: var(--text-muted); font-size: 9px; }
 .service-status-loading { display: flex; align-items: center; justify-content: center; gap: 9px; min-height: 180px; color: var(--text-muted); font-size: 11px; }
 @media (max-width: 760px) {
   .profile-directory-search { min-width: 0; width: 42vw; }
   .profile-tabs { gap: 4px; overflow-x: auto; }
   .profile-tab-button { flex: 0 0 auto; }
   .profile-media-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .profile-media-grid > .browse-clip-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .profile-about-panels { grid-template-columns: 1fr; }
+  .service-status-header { padding-inline: 15px; }
+  .service-status-content { padding: 15px; }
   .service-status-row { grid-template-columns: 1fr 1fr; }
+  .service-status-timeline { grid-column: 1 / -1; grid-row: 2; }
   .private-message-shell { width: 100vw; height: 100dvh; max-height: 100dvh; border-radius: 0; }
+}
+@media (max-width: 480px) {
+  .profile-media-grid,
+  .profile-media-grid > .browse-clip-grid { grid-template-columns: 1fr; }
 }
 </style>
 </head>
@@ -5566,7 +5612,7 @@ header {
     
     <div class="sidebar-header">
       <div>Following <span class="live-count">58 Live</span></div>
-      <button class="icon-btn" onclick="toggleSort()" title="Sort by viewers">
+      <button id="sidebar-sort-toggle" class="icon-btn" onclick="toggleSort()" title="Sort least to most viewers" aria-label="Sort least to most viewers" aria-pressed="false">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M7 15l5 5 5-5M7 9l5-5 5 5"/>
         </svg>
@@ -6392,17 +6438,17 @@ header {
 
 <!-- FOLLOWERS / FOLLOWING -->
 <div id="profile-user-list-modal" class="modal-overlay" onclick="closeProfileUserList(event)" role="dialog" aria-modal="true" aria-labelledby="profile-user-list-title">
-  <div class="modal-content profile-user-list-shell" onclick="event.stopPropagation()"><div class="modal-header"><h2 id="profile-user-list-title">Followers</h2><button class="icon-btn" type="button" onclick="closeProfileUserList(null, true)" aria-label="Close user list"><i class="fa-solid fa-xmark"></i></button></div><div id="profile-user-list" class="profile-user-list"></div></div>
+  <div class="modal-content profile-user-list-shell" onclick="event.stopPropagation()"><div class="modal-header profile-user-list-header"><div class="profile-user-list-heading"><span class="profile-user-list-heading-icon" aria-hidden="true"><i id="profile-user-list-icon" class="fa-solid fa-user-group"></i></span><h2 id="profile-user-list-title">Followers</h2></div><button class="icon-btn" type="button" onclick="closeProfileUserList(null, true)" aria-label="Close user list"><i class="fa-solid fa-xmark"></i></button></div><div id="profile-user-list" class="profile-user-list"></div></div>
 </div>
 
 <!-- ABOUT PANEL EDITOR -->
 <div id="profile-panel-editor-modal" class="modal-overlay" onclick="closeProfilePanelEditor(event)" role="dialog" aria-modal="true" aria-labelledby="profile-panel-editor-title">
-  <form class="modal-content profile-panel-editor-shell" onclick="event.stopPropagation()" onsubmit="saveProfilePanel(event)"><div class="modal-header"><h2 id="profile-panel-editor-title">About Panel</h2><button class="icon-btn" type="button" onclick="closeProfilePanelEditor(null, true)" aria-label="Close panel editor"><i class="fa-solid fa-xmark"></i></button></div><input id="profile-panel-id" type="hidden"><label>Title<input id="profile-panel-title" maxlength="100" placeholder="Panel title"></label><label>Image URL<input id="profile-panel-image" type="url" placeholder="https://"></label><label>Description<textarea id="profile-panel-description" maxlength="1000" rows="5" placeholder="Tell visitors more…"></textarea></label><label>Optional link<input id="profile-panel-url" type="url" placeholder="https://"></label><div class="profile-panel-editor-actions"><button id="profile-panel-delete" class="secondary-btn danger" type="button" onclick="deleteProfilePanel()" hidden>Remove</button><button class="primary-btn" type="submit">Save Panel</button></div></form>
+  <form class="modal-content profile-panel-editor-shell" onclick="event.stopPropagation()" onsubmit="saveProfilePanel(event)"><div class="modal-header"><h2 id="profile-panel-editor-title">About Panel</h2><button class="icon-btn" type="button" onclick="closeProfilePanelEditor(null, true)" aria-label="Close panel editor"><i class="fa-solid fa-xmark"></i></button></div><input id="profile-panel-id" type="hidden"><label>Title<input id="profile-panel-title" maxlength="100" placeholder="Panel title"></label><label>Image URL<input id="profile-panel-image" type="url" placeholder="https://"></label><label>Description<textarea id="profile-panel-description" maxlength="1000" rows="5" placeholder="Tell visitors more…"></textarea></label><label>Optional link<input id="profile-panel-url" type="url" placeholder="https://"></label><div class="profile-panel-editor-actions"><button id="profile-panel-delete" class="secondary-btn danger profile-panel-delete-button" type="button" onclick="deleteProfilePanel()" aria-label="Remove about panel" title="Remove panel" hidden><i class="fa-solid fa-trash-can" aria-hidden="true"></i></button><button class="primary-btn" type="submit">Save Panel</button></div></form>
 </div>
 
 <!-- SERVICE STATUS -->
 <div id="service-status-modal" class="modal-overlay" onclick="closeServiceStatusModal(event)" role="dialog" aria-modal="true" aria-labelledby="service-status-title">
-  <div class="modal-content service-status-shell" onclick="event.stopPropagation()"><div class="modal-header service-status-header"><div><h2 id="service-status-title"><i class="fa-solid fa-signal"></i>Service Status</h2><p>Live availability and response-time data.</p></div><button class="icon-btn" type="button" onclick="closeServiceStatusModal(null, true)" aria-label="Close status"><i class="fa-solid fa-xmark"></i></button></div><div id="service-status-content" class="service-status-content"><div class="service-status-loading"><span class="global-search-spinner"></span>Checking services…</div></div></div>
+  <div class="modal-content service-status-shell" onclick="event.stopPropagation()"><div class="modal-header service-status-header"><div class="service-status-heading"><span class="service-status-title-icon" aria-hidden="true"><i class="fa-solid fa-signal"></i></span><div><h2 id="service-status-title">Service Status</h2><p>Live availability and response-time data from UptimeRobot.</p></div></div><button class="icon-btn" type="button" onclick="closeServiceStatusModal(null, true)" aria-label="Close status"><i class="fa-solid fa-xmark"></i></button></div><div id="service-status-content" class="service-status-content"><div class="service-status-loading"><span class="global-search-spinner"></span>Checking services…</div></div></div>
 </div>
 
 <!-- PROFILE SHARE LINK -->

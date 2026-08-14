@@ -66,6 +66,8 @@ test('social messaging, notification history, profile panels, and status routes 
   assert.match(html, /formatRelativeNotificationTime/);
   assert.match(html, /dark_theme=true/);
   assert.match(statusRoute, /UPTIMEROBOT_API_KEY/);
+  assert.match(statusRoute, /UPTIMEROBOT_RESPONSE_API_KEY/);
+  assert.match(statusRoute, /mergeUptimeRobotServices/);
   assert.match(worker, /shared_layout_banner\.png/);
 });
 
@@ -90,6 +92,25 @@ test('production UI fixes remain wired to backend-normalized data', () => {
   assert.match(backendClient, /\/api\/profiles\?q=\$\{encodeURIComponent\(value\)\}/);
   assert.match(backendClient, /\/api\/profiles\/\$\{encodeURIComponent\(username\)\}\/block/);
   assert.match(backendClient, /async function loadBlockedProfiles/);
+  assert.match(html, /\.suggested-card \.name \{[^}]*text-overflow: ellipsis;[^}]*white-space: nowrap;/);
+  assert.match(backendClient, /class="name" title="\$\{escapeHTML\(user\.name\)\}"/);
+  assert.match(html, /\.profile-more-control \{[^}]*margin-left: auto;[^}]*margin-right: 6px;/);
+  assert.match(html, /class="profile-user-list-heading-icon"/);
+  assert.match(backendClient, /profile-user-list-icon/);
+  assert.match(html, /class="service-status-heading"/);
+  assert.match(html, /class="service-status-title-icon"/);
+  assert.match(backendClient, /service-status-incidents/);
+  assert.match(html, /#service-status-modal \{ z-index: 12000 !important; \}/);
+  assert.match(html, /\.service-status-pill::after/);
+  assert.match(backendClient, /service-status-timeline/);
+  assert.match(html, /id="sidebar-sort-toggle"/);
+  assert.match(backendClient, /function sortSidebarItems/);
+  assert.match(backendClient, /window\.toggleSort = \(\) =>/);
+  assert.match(backendClient, /sortSidebarItems\(real\.recommendedCategories, item => item\.watching\)/);
+  assert.match(html, /\.profile-about-social-icon svg/);
+  assert.match(backendClient, /getPlatformIcon\(String\(platform\)\.toLowerCase\(\)\)/);
+  assert.match(html, /id="profile-panel-delete"[^>]*profile-panel-delete-button[^>]*aria-label="Remove about panel"/);
+  assert.match(html, /fa-trash-can/);
   assert.match(profileRoute, /SELECT u\.username, u\.avatar_url, u\.banner_url, u\.bio FROM profile_blocks/);
 });
 
@@ -142,4 +163,19 @@ test('OAuth, AI recovery, YouTube data fallbacks, and share routes have regressi
   assert.match(backendClient, /avatar: item\.avatar \|\| ''/);
   assert.match(backendClient, /hasViewerCount\(detail\)/);
   assert.doesNotMatch(html, /enteringGrid[\s\S]{0,500}player\.kick\.com/);
+  assert.match(platforms, /featured:last-good:v1/);
+  assert.match(platforms, /ranked\.length < minimumHealthySize/);
+  assert.match(platforms, /cacheGetStale\(env, lastGoodKey, 300\)/);
+  assert.match(platforms, /searchRumbleChannels\(env, 'live'/);
+  assert.match(platforms, /const platformOrder = \['twitch', 'youtube', 'kick', 'rumble'\]/);
+  assert.match(platforms, /_liveResult: true/);
+  assert.match(backendClient, /function balanceSidebarPlatforms/);
+  assert.match(backendClient, /balanceSidebarPlatforms\(real\.featured, item => item\.viewers\)/);
+  assert.match(html, /\.sidebar-show-toggle \{[^}]*color: var\(--accent\);/);
+  assert.match(html, /\.suggested-name-row \{[^}]*width: fit-content;/);
+  assert.match(html, /\.profile-media-grid > \.browse-clip-grid \{[^}]*grid-template-columns: repeat\(4,/);
+  assert.match(platforms, /if \(!broadcasterId\) \{\s*params\.set\('started_at'/);
+  assert.match(platforms, /youtubeChannelVideosBySearch/);
+  assert.match(platforms, /fallbackUsername = ''/);
+  assert.match(profileRoute, /profilePlatformHint\(platform, social\?\.url\)/);
 });

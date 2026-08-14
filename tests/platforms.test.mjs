@@ -1,6 +1,28 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { isCreatorYoutubeLivePayload, normalizeKickChannel, normalizeKickLive } from '../src/platforms.js';
+import { isCreatorYoutubeLivePayload, normalizeKickChannel, normalizeKickLive, profileMedia } from '../src/platforms.js';
+
+function apiTestEnv() {
+  return {
+    DB: {
+      prepare() {
+        return {
+          bind() {
+            return {
+              first: async () => null,
+              run: async () => ({ success: true })
+            };
+          }
+        };
+      }
+    },
+    TOKEN_ENCRYPTION_KEY: 'profile-media-test-encryption-key',
+    TWITCH_CLIENT_ID: 'twitch-client',
+    TWITCH_CLIENT_SECRET: 'twitch-secret',
+    YOUTUBE_API_KEY: 'youtube-key',
+    APP_ORIGIN: 'https://multistreams.tv'
+  };
+}
 
 test('YouTube fallback candidates require a current live broadcast signal', () => {
   assert.equal(isCreatorYoutubeLivePayload({ durationMs: null, publishDateText: 'Started streaming 2 hours ago' }), true);
@@ -89,4 +111,84 @@ test('Kick channel records centralize offline, live, optional, and profile-pictu
   assert.equal(hiddenLive.viewers, null);
   assert.equal(hiddenLive.viewerCountAvailable, false);
   assert.equal(hiddenLive.stream.viewerCountAvailable, false);
+});
+
+test('profile Twitch clips use the full broadcaster catalogue instead of a seven-day window', { concurrency: false }, async () => {
+  const originalFetch = globalThis.fetch;
+  let clipRequest = '';
+  globalThis.fetch = async input => {
+    const url = String(input);
+    if (url.startsWith('https://id.twitch.tv/oauth2/token')) return Response.json({ access_token: 'app-token', expires_in: 3600 });
+    if (url.includes('/helix/users')) return Response.json({ data: [{ id: '42', login: 'creator', display_name: 'Creator', profile_image_url: 'https://img.test/avatar.jpg' }] });
+    if (url.includes('/helix/clips')) {
+      clipRequest = url;
+      return Response.json({ data: [{ id: 'ClipOne', broadcaster_id: '42', broadcaster_name: 'Creator', title: 'Classic clip', view_count: 99, duration: 21, created_at: '2025-01-01T00:00:00Z', thumbnail_url: 'https://img.test/clip.jpg', url: 'https://clips.twitch.tv/ClipOne' }] });
+    }
+    throw new Error(`Unexpected test request: ${url}`);
+  };
+  try {
+    const clips = await profileMedia(apiTestEnv(), 'twitch', '42', 'creator', 24);
+    assert.equal(clips.length, 1);
+    assert.equal(clips[0].id, 'ClipOne');
+    assert.match(clipRequest, /broadcaster_id=42/);
+    assert.doesNotMatch(clipRequest, /started_at|ended_at/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('profile YouTube videos fall back to channel search when uploads playlist is unavailable', { concurrency: false }, async () => {
+  const originalFetch = globalThis.fetch;
+  let usedChannelSearch = false;
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith('/channels')) return Response.json({ items: [{ id: 'UC123', snippet: { title: 'Creator', customUrl: '@creator', thumbnails: { high: { url: 'https://img.test/avatar.jpg' } } }, contentDetails: { relatedPlaylists: { uploads: 'UU123' } }, brandingSettings: {} }] });
+    if (url.pathname.endsWith('/playlistItems')) return Response.json({ error: { errors: [{ reason: 'playlistNotFound' }] } }, { status: 404 });
+    if (url.pathname.endsWith('/search')) {
+      usedChannelSearch = url.searchParams.get('channelId') === 'UC123' && url.searchParams.get('order') === 'date';
+      return Response.json({ items: [{ id: { videoId: 'video-1' } }] });
+    }
+    if (url.pathname.endsWith('/videos')) return Response.json({ items: [{ id: 'video-1', snippet: { channelId: 'UC123', channelTitle: 'Creator', title: 'Latest video', publishedAt: '2026-08-01T00:00:00Z', thumbnails: { high: { url: 'https://img.test/video.jpg' } } }, statistics: { viewCount: '1200' }, contentDetails: { duration: 'PT8M4S' }, status: { embeddable: true } }] });
+    throw new Error(`Unexpected test request: ${url}`);
+  };
+  try {
+    const videos = await profileMedia(apiTestEnv(), 'youtube', 'UC123', '@creator', 24);
+    assert.equal(usedChannelSearch, true);
+    assert.equal(videos.length, 1);
+    assert.equal(videos[0].id, 'video-1');
+    assert.equal(videos[0].durationSeconds, 484);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test('profile YouTube videos can use the saved public channel when the OAuth channel is empty', { concurrency: false }, async () => {
+  const originalFetch = globalThis.fetch;
+  const requestedChannelIds = [];
+  globalThis.fetch = async input => {
+    const url = new URL(String(input));
+    if (url.pathname.endsWith('/channels') && url.searchParams.has('id')) {
+      const id = url.searchParams.get('id');
+      requestedChannelIds.push(id);
+      return Response.json({ items: [{ id, snippet: { title: id === 'UC_PUBLIC' ? 'Public Creator' : 'Empty OAuth Channel', customUrl: id === 'UC_PUBLIC' ? '@publiccreator' : '@emptychannel', thumbnails: {} }, contentDetails: {}, brandingSettings: {} }] });
+    }
+    if (url.pathname.endsWith('/channels') && url.searchParams.has('forHandle')) {
+      const handle = url.searchParams.get('forHandle').replace(/^@/, '');
+      return Response.json({ items: [{ id: handle === 'publiccreator' ? 'UC_PUBLIC' : 'UC_EMPTY', snippet: { title: handle, customUrl: `@${handle}`, thumbnails: {} }, contentDetails: {}, brandingSettings: {} }] });
+    }
+    if (url.pathname.endsWith('/search')) {
+      const channelId = url.searchParams.get('channelId');
+      return Response.json({ items: channelId === 'UC_PUBLIC' ? [{ id: { videoId: 'public-video' } }] : [] });
+    }
+    if (url.pathname.endsWith('/videos')) return Response.json({ items: [{ id: 'public-video', snippet: { channelId: 'UC_PUBLIC', channelTitle: 'Public Creator', title: 'Public video', publishedAt: '2026-08-01T00:00:00Z', thumbnails: {} }, statistics: {}, contentDetails: { duration: 'PT2M' }, status: { embeddable: true } }] });
+    throw new Error(`Unexpected test request: ${url}`);
+  };
+  try {
+    const videos = await profileMedia(apiTestEnv(), 'youtube', 'UC_EMPTY', '@emptychannel', 24, '@publiccreator');
+    assert.deepEqual(requestedChannelIds, ['UC_EMPTY', 'UC_PUBLIC']);
+    assert.equal(videos.length, 1);
+    assert.equal(videos[0].id, 'public-video');
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

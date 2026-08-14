@@ -8,6 +8,20 @@ const SOCIAL_HOSTS = {
   tiktok: ['tiktok.com'], discord: ['discord.com', 'discord.gg'], facebook: ['facebook.com'], kick: ['kick.com'], snapchat: ['snapchat.com'], rumble: ['rumble.com']
 };
 
+function profilePlatformHint(platform, value) {
+  try {
+    const url = new URL(String(value || ''));
+    const parts = url.pathname.split('/').filter(Boolean).map(decodeURIComponent);
+    if (platform === 'twitch') return parts[0] || '';
+    if (platform !== 'youtube') return '';
+    if (parts[0]?.startsWith('@')) return parts[0];
+    if (['channel', 'user', 'c'].includes(String(parts[0] || '').toLowerCase())) return parts[1] || '';
+    return parts[0] || '';
+  } catch {
+    return '';
+  }
+}
+
 async function socials(env, userId) {
   const rows = await env.DB.prepare('SELECT platform, url FROM social_links WHERE user_id = ?1 ORDER BY platform').bind(userId).all();
   return Object.fromEntries((rows.results || []).map(row => [row.platform, row.url]));
@@ -266,9 +280,12 @@ async function media(request, env, username, type) {
   const access = await accessState(env, target, viewer);
   if (!access.allowed) throw new HttpError(403, 'This profile is unavailable.', 'profile_unavailable');
   const platform = type === 'clips' ? 'twitch' : 'youtube';
-  const connection = await env.DB.prepare('SELECT platform_user_id, platform_username FROM oauth_connections WHERE user_id = ?1 AND platform = ?2').bind(target.id, platform).first();
+  const [connection, social] = await Promise.all([
+    env.DB.prepare('SELECT platform_user_id, platform_username FROM oauth_connections WHERE user_id = ?1 AND platform = ?2').bind(target.id, platform).first(),
+    env.DB.prepare('SELECT url FROM social_links WHERE user_id = ?1 AND platform = ?2').bind(target.id, platform).first()
+  ]);
   if (!connection) return json({ ok: true, type, connected: false, items: [] });
-  const items = await profileMedia(env, platform, connection.platform_user_id, connection.platform_username, 24);
+  const items = await profileMedia(env, platform, connection.platform_user_id, connection.platform_username, 24, profilePlatformHint(platform, social?.url));
   return json({ ok: true, type, connected: true, items }, { headers: { 'cache-control': 'private, max-age=60' } });
 }
 

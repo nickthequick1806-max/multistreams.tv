@@ -349,10 +349,47 @@
     calculateNotificationCounts?.();
   }
 
+  function sortSidebarItems(items, valueOf) {
+    return [...(items || [])].sort((a, b) => {
+      const difference = Number(valueOf(a) || 0) - Number(valueOf(b) || 0);
+      return sortDesc ? -difference : difference;
+    });
+  }
+
+  function balanceSidebarPlatforms(items, valueOf) {
+    const sorted = sortSidebarItems(items, valueOf);
+    const preferredOrder = ['twitch', 'youtube', 'kick', 'rumble'];
+    const groups = new Map(preferredOrder.map(platform => [platform, sorted.filter(item => item.platform === platform)]));
+    sorted.forEach(item => { if (!groups.has(item.platform)) groups.set(item.platform, sorted.filter(candidate => candidate.platform === item.platform)); });
+    const balanced = [];
+    while (balanced.length < sorted.length) {
+      let added = false;
+      groups.forEach(group => {
+        const item = group.shift();
+        if (!item) return;
+        balanced.push(item);
+        added = true;
+      });
+      if (!added) break;
+    }
+    return balanced;
+  }
+
+  function updateSidebarSortButton() {
+    const button = document.getElementById('sidebar-sort-toggle');
+    if (!button) return;
+    const nextLabel = sortDesc ? 'Sort least to most viewers' : 'Sort most to least viewers';
+    button.title = nextLabel;
+    button.setAttribute('aria-label', nextLabel);
+    button.setAttribute('aria-pressed', String(!sortDesc));
+  }
+
   function renderFeatured() {
+    updateSidebarSortButton();
+    const sortedFeatured = balanceSidebarPlatforms(real.featured, item => item.viewers);
     const sidebar = document.getElementById('featured-list');
     if (sidebar) {
-      const shown = real.sidebarExpanded.featured ? real.featured : real.featured.slice(0, 6);
+      const shown = real.sidebarExpanded.featured ? sortedFeatured : sortedFeatured.slice(0, 6);
       sidebar.innerHTML = shown.map(user => `
         <div class="followed-channel" data-featured-platform="${escapeHTML(user.platform)}" data-featured-name="${escapeHTML(user.username)}">
           ${avatarMarkup(user, 'followed-avatar')}
@@ -370,7 +407,8 @@
   function renderRecommendedCategories() {
     const container = document.getElementById('recommended-category-list');
     if (!container) return;
-    const shown = real.sidebarExpanded.categories ? real.recommendedCategories : real.recommendedCategories.slice(0, 6);
+    const sortedCategories = sortSidebarItems(real.recommendedCategories, item => item.watching);
+    const shown = real.sidebarExpanded.categories ? sortedCategories : sortedCategories.slice(0, 6);
     container.innerHTML = shown.map(category => `<div class="recommended-category" data-category-id="${escapeHTML(category.id)}"><img src="${escapeHTML(category.image || '')}" alt=""><span class="recommended-category-copy"><strong>${escapeHTML(category.name)}</strong><span>${Number(category.liveChannels || 0)} live channels</span></span><span class="recommended-category-viewers">${compact(category.watching)}</span></div>`).join('');
     container.querySelectorAll('[data-category-id]').forEach(card => card.addEventListener('click', () => {
       const category = real.recommendedCategories.find(item => String(item.id) === String(card.dataset.categoryId));
@@ -384,10 +422,11 @@
   function renderRealSuggested() {
     const container = document.getElementById('empty-suggested');
     if (!container || !real.featured.length) return;
-    const cards = Array.from({ length: Math.min(4, real.featured.length) }, (_, offset) => real.featured[(featuredRotationIndex + offset) % real.featured.length]);
+    const sortedFeatured = balanceSidebarPlatforms(real.featured, item => item.viewers);
+    const cards = Array.from({ length: Math.min(4, sortedFeatured.length) }, (_, offset) => sortedFeatured[(featuredRotationIndex + offset) % sortedFeatured.length]);
     container.innerHTML = cards.map(user => `
       <div class="suggested-card featured-rotating-card">
-        ${avatarMarkup(user, 'suggested-avatar')}<div class="suggested-name-row"><div class="name">${escapeHTML(user.name)}</div><span class="suggested-platform-icon" title="${escapeHTML(user.platform)}" aria-label="${escapeHTML(user.platform)}">${getPlatformIcon(user.platform)}</span></div>
+        ${avatarMarkup(user, 'suggested-avatar')}<div class="suggested-name-row"><div class="name" title="${escapeHTML(user.name)}">${escapeHTML(user.name)}</div><span class="suggested-platform-icon" title="${escapeHTML(user.platform)}" aria-label="${escapeHTML(user.platform)}">${getPlatformIcon(user.platform)}</span></div>
         <div class="cat">${escapeHTML(user.live ? user.category : `${user.platform} channel`)}</div>
         <div class="viewers"><i class="fa-solid ${user.live ? 'fa-eye' : 'fa-circle'}" aria-hidden="true"></i>${user.live ? `${compact(user.viewers)} watching` : 'Offline'}</div>
         <button type="button" data-watch-name="${escapeHTML(user.username)}" data-watch-platform="${escapeHTML(user.platform)}">Watch Now</button>
@@ -400,7 +439,7 @@
 
   async function loadFeatured() {
     const [payload, categories] = await Promise.all([api('/api/featured?limit=20'), api('/api/browse/twitch?view=categories&limit=30')]);
-    real.featured = (payload.items || []).filter(item => item.live).sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0));
+    real.featured = (payload.items || []).filter(item => item.live);
     real.recommendedCategories = (categories.items || []).sort((a, b) => Number(b.watching || 0) - Number(a.watching || 0));
     renderFeatured();
   }
@@ -415,12 +454,19 @@
   window.renderFollowedList = () => {
     const list = document.getElementById('followed-list');
     if (!list) return;
-    const sorted = [...(mockFollowedData || [])].sort((a, b) => Number(b.realData?.viewers || 0) - Number(a.realData?.viewers || 0));
+    updateSidebarSortButton();
+    const sorted = sortSidebarItems(mockFollowedData, item => item.realData?.viewers);
     const shown = real.sidebarExpanded.following ? sorted : sorted.slice(0, 6);
     list.innerHTML = shown.map(user => `<div class="followed-channel" data-followed-platform="${escapeHTML(user.platform)}" data-followed-name="${escapeHTML(user.name)}">${avatarMarkup({ ...user.realData, name: user.name, avatar: user.avatar }, 'followed-avatar')}<div class="followed-info"><div class="followed-name">${escapeHTML(user.name)}</div><div class="followed-category">${escapeHTML(user.category || 'Live')}</div></div><div class="followed-viewers"><div class="dot" style="background:${getPlatformColor(user.platform)}"></div>${hasViewerCount(user.realData) ? compact(user.realData.viewers) : 'LIVE'}</div></div>`).join('');
     list.querySelectorAll('[data-followed-name]').forEach(card => card.addEventListener('click', () => toggleStream(card.dataset.followedName, card.dataset.followedPlatform)));
     const toggle = document.getElementById('followed-show-toggle');
     if (toggle) { toggle.hidden = sorted.length <= 6; toggle.textContent = real.sidebarExpanded.following ? 'Show Less' : 'Show More'; }
+  };
+
+  window.toggleSort = () => {
+    sortDesc = !sortDesc;
+    window.renderFollowedList();
+    renderFeatured();
   };
 
   async function loadRewardData() {
@@ -1412,7 +1458,7 @@
     const panelContainer = document.getElementById('profile-about-panels');
     if (!summary || !panelContainer || !profile) return;
     const socials = Object.entries(profile.socialLinks || {});
-    summary.innerHTML = `<h3>About ${escapeHTML(profile.username)} <span style="color:#4ade80;font-size:10px;">${Number(profile.stats?.followers || 0).toLocaleString()} followers</span></h3><p>${escapeHTML(profile.bio || 'This user has not added a bio yet.')}</p>${socials.length ? `<div class="profile-about-socials">${socials.map(([platform, url]) => `<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer">${getPlatformIcon(platform)}<span>${escapeHTML(platform)}</span></a>`).join('')}</div>` : ''}`;
+    summary.innerHTML = `<h3>About ${escapeHTML(profile.username)} <span style="color:#4ade80;font-size:10px;">${Number(profile.stats?.followers || 0).toLocaleString()} followers</span></h3><p>${escapeHTML(profile.bio || 'This user has not added a bio yet.')}</p>${socials.length ? `<div class="profile-about-socials">${socials.map(([platform, url]) => `<a href="${escapeHTML(url)}" target="_blank" rel="noopener noreferrer"><span class="profile-about-social-icon" aria-hidden="true">${getPlatformIcon(String(platform).toLowerCase())}</span><span>${escapeHTML(platform)}</span></a>`).join('')}</div>` : ''}`;
     const owns = Boolean(profile.isOwn);
     document.getElementById('profile-add-panel-button').hidden = !owns;
     const items = profile.panels || [];
@@ -1489,6 +1535,8 @@
     const modal = document.getElementById('profile-user-list-modal');
     const list = document.getElementById('profile-user-list');
     document.getElementById('profile-user-list-title').textContent = type === 'followers' ? 'Followers' : 'Following';
+    const titleIcon = document.getElementById('profile-user-list-icon');
+    if (titleIcon) titleIcon.className = `fa-solid ${type === 'followers' ? 'fa-user-group' : 'fa-user-check'}`;
     modal.classList.add('active');
     list.innerHTML = '<div class="service-status-loading"><span class="global-search-spinner"></span>Loading users…</div>';
     try {
@@ -1526,7 +1574,8 @@
       const payload = await api('/api/status');
       const labels = { operational: 'All systems operational', degraded: 'Some systems are degraded', down: 'Service interruption detected' };
       const icon = payload.status === 'operational' ? 'fa-circle-check' : 'fa-triangle-exclamation';
-      content.innerHTML = `<div class="service-status-overall"><i class="fa-solid ${icon}"></i><div><strong>${labels[payload.status] || 'Service status'}</strong><span>${payload.services.length} monitored service${payload.services.length === 1 ? '' : 's'} · Last checked ${new Date(payload.checkedAt).toLocaleString()}</span></div></div>${payload.warning ? `<div style="color:#fbbf24;font-size:10px;">${escapeHTML(payload.warning)}</div>` : ''}<div style="display:grid;gap:8px;">${payload.services.map(service => `<div class="service-status-row"><div><strong>${escapeHTML(service.name)}</strong><span style="display:block;margin-top:3px;overflow:hidden;text-overflow:ellipsis;">${escapeHTML(service.url)}</span></div><span>${service.uptime === null ? 'Live check' : `${Number(service.uptime).toFixed(3)}% uptime`}</span><span>${Number(service.responseTime || 0)} ms response</span><span class="service-status-state">${escapeHTML(service.status)}</span></div>`).join('')}</div>`;
+      const incidents = payload.services.flatMap(service => (service.incidents || []).map(incident => ({ ...incident, service: service.name })));
+      content.innerHTML = `<div class="service-status-overall"><i class="fa-solid ${icon}" aria-hidden="true"></i><div><strong>${labels[payload.status] || 'Service status'}</strong><span>${payload.services.length} monitored service${payload.services.length === 1 ? '' : 's'} · Last checked ${new Date(payload.checkedAt).toLocaleString()}</span></div></div>${payload.warning ? `<div class="service-status-warning"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>&nbsp; ${escapeHTML(payload.warning)}</div>` : ''}<div class="service-status-list">${payload.services.map(service => { const state = ['operational', 'degraded', 'down'].includes(service.status) ? service.status : 'degraded'; const history = Array.isArray(service.history) ? service.history : []; const timeline = `<div class="service-status-timeline" aria-label="Recent response history">${history.map(period => { const periodState = ['operational', 'degraded', 'down'].includes(period.status) ? period.status : 'unknown'; const when = period.checkedAt ? new Date(period.checkedAt).toLocaleString() : 'No response sample'; const response = period.responseTime === null || period.responseTime === undefined ? '' : ` · ${Number(period.responseTime)} ms`; const tooltip = `${periodState === 'unknown' ? 'No data' : periodState[0].toUpperCase() + periodState.slice(1)} · ${when}${response}`; return `<span class="service-status-pill ${periodState}" tabindex="0" role="img" aria-label="${escapeHTML(tooltip)}" data-tooltip="${escapeHTML(tooltip)}"></span>`; }).join('')}</div>`; return `<div class="service-status-row"><div><strong>${escapeHTML(service.name)}</strong><span style="display:block;margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${escapeHTML(service.url)}</span></div><span>${service.uptime === null ? 'Live check' : `${Number(service.uptime).toFixed(3)}% uptime`}</span>${timeline}<span>${Number(service.responseTime || 0)} ms response</span><span class="service-status-state ${state}">${escapeHTML(state)}</span></div>`; }).join('')}</div>${incidents.length ? `<section class="service-status-incidents"><h3>Recent incidents</h3>${incidents.slice(0, 8).map(incident => `<div class="service-status-incident"><div><strong>${escapeHTML(incident.reason || 'Service interruption')}</strong><span>${escapeHTML(incident.service)}</span></div><span>${incident.startedAt ? new Date(incident.startedAt).toLocaleString() : 'Time unavailable'}</span></div>`).join('')}</section>` : ''}`;
     } catch (error) { content.innerHTML = `<div class="profile-followed-empty"><i class="fa-solid fa-triangle-exclamation"></i><br>${escapeHTML(error.message)}<br><button class="secondary-btn" style="margin-top:12px" onclick="openServiceStatusModal()">Try again</button></div>`; }
   };
   window.closeServiceStatusModal = (event, force = false) => { const modal = document.getElementById('service-status-modal'); if (modal && (force || event?.target === modal)) modal.classList.remove('active'); };

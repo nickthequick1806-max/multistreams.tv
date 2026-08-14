@@ -240,7 +240,14 @@ async function twitchClips(env, limit = 24, categoryId = '', broadcasterId = '')
   const start = new Date(end.getTime() - 7 * 86400_000);
   const batches = broadcasterId ? [broadcasterId] : targetIds;
   const results = await Promise.all(batches.map(async id => {
-    const params = new URLSearchParams({ first: String(Math.min(100, limit)), started_at: start.toISOString(), ended_at: end.toISOString() });
+    const params = new URLSearchParams({ first: String(Math.min(100, limit)) });
+    // Browse clips stay recent, while profile clips should include the creator's
+    // full catalogue so a connected account never appears empty merely because
+    // it has not published a clip in the last seven days.
+    if (!broadcasterId) {
+      params.set('started_at', start.toISOString());
+      params.set('ended_at', end.toISOString());
+    }
     params.set(broadcasterId ? 'broadcaster_id' : 'game_id', id);
     return (await twitchApi(env, `/clips?${params}`)).data || [];
   }));
@@ -272,15 +279,50 @@ async function youtubeChannelByHandle(env, handle, accessToken) {
   return payload.items?.[0] || null;
 }
 
+async function youtubeChannelVideosBySearch(env, channel, limit = 24, accessToken) {
+  const channelId = channel?.id || '';
+  if (!channelId) return [];
+  const params = new URLSearchParams({
+    part: 'snippet',
+    type: 'video',
+    channelId,
+    maxResults: String(Math.min(50, limit)),
+    order: 'date',
+    videoEmbeddable: 'true',
+    safeSearch: 'moderate'
+  });
+  const search = await youtubeApi(env, `/search?${params}`, accessToken);
+  const ids = (search.items || []).map(item => item.id?.videoId).filter(Boolean);
+  const videos = await youtubeVideoDetails(env, ids, accessToken);
+  return videos
+    .filter(video => video.status?.embeddable !== false)
+    .map(video => normalizeYoutubeVideo(video, channel));
+}
+
 async function youtubeChannelUploads(env, channelId, limit = 24, accessToken) {
   const channels = await youtubeChannels(env, [channelId], accessToken);
   const channel = channels[0];
+  if (!channel) return [];
   const uploadsId = channel?.contentDetails?.relatedPlaylists?.uploads;
-  if (!uploadsId) return [];
-  const playlist = await youtubeApi(env, `/playlistItems?part=contentDetails&playlistId=${encodeURIComponent(uploadsId)}&maxResults=${Math.min(50, limit)}`, accessToken);
-  const ids = (playlist.items || []).map(item => item.contentDetails?.videoId).filter(Boolean);
-  const videos = await youtubeVideoDetails(env, ids, accessToken);
-  return videos.map(video => normalizeYoutubeVideo(video, channel));
+  if (uploadsId) {
+    try {
+      const playlist = await youtubeApi(env, `/playlistItems?part=contentDetails&playlistId=${encodeURIComponent(uploadsId)}&maxResults=${Math.min(50, limit)}`, accessToken);
+      const ids = (playlist.items || []).map(item => item.contentDetails?.videoId).filter(Boolean);
+      if (ids.length) {
+        const videos = await youtubeVideoDetails(env, ids, accessToken);
+        const normalized = videos
+          .filter(video => video.status?.embeddable !== false)
+          .map(video => normalizeYoutubeVideo(video, channel));
+        if (normalized.length) return normalized;
+      }
+    } catch (error) {
+      if (error?.code === 'youtube_rate_limited' || error?.code === 'platform_reauthorization_required') throw error;
+      // Some valid channels expose an uploads playlist id that playlistItems
+      // rejects with playlistNotFound. The channel-scoped search below is the
+      // official API fallback for those accounts.
+    }
+  }
+  return youtubeChannelVideosBySearch(env, channel, limit, accessToken);
 }
 
 function normalizeYoutubeVideo(video, channel, categoryNames = new Map()) {
@@ -967,12 +1009,38 @@ async function youtubeFollowing(env, row) {
   return cachePut(env, cacheKey, result, 600);
 }
 
-export async function profileMedia(env, platform, platformUserId, platformUsername, limit = 24) {
+export async function profileMedia(env, platform, platformUserId, platformUsername, limit = 24, fallbackUsername = '') {
   if (platform === 'twitch') {
-    const users = await twitchUsers(env, platformUserId ? [platformUserId] : [], platformUsername ? [platformUsername] : []);
+    const logins = [...new Set([platformUsername, fallbackUsername].map(value => String(value || '').trim().replace(/^@/, '')).filter(Boolean))];
+    const users = await twitchUsers(env, platformUserId ? [platformUserId] : [], logins);
     return users[0] ? twitchClips(env, clampInt(limit, 1, 40, 24), '', users[0].id) : [];
   }
-  if (platform === 'youtube') return platformUserId ? youtubeChannelUploads(env, platformUserId, clampInt(limit, 1, 40, 24)) : [];
+  if (platform === 'youtube') {
+    const mediaLimit = clampInt(limit, 1, 40, 24);
+    const attemptedIds = new Set();
+    const loadChannel = async channelId => {
+      const id = String(channelId || '').trim();
+      if (!id || attemptedIds.has(id)) return [];
+      attemptedIds.add(id);
+      return youtubeChannelUploads(env, id, mediaLimit);
+    };
+    if (platformUserId) {
+      const items = await loadChannel(platformUserId);
+      if (items.length) return items;
+    }
+    const handles = [...new Set([platformUsername, fallbackUsername].map(value => String(value || '').trim()).filter(Boolean))];
+    for (const handle of handles) {
+      if (/^UC[\w-]+$/i.test(handle)) {
+        const items = await loadChannel(handle);
+        if (items.length) return items;
+        continue;
+      }
+      const channel = await youtubeChannelByHandle(env, handle);
+      const items = await loadChannel(channel?.id);
+      if (items.length) return items;
+    }
+    return [];
+  }
   return [];
 }
 
@@ -1040,7 +1108,8 @@ export async function browse(env, platform, view, options = {}) {
 }
 
 export async function featured(env, limit = 20) {
-  const cacheKey = `featured:v8:${limit}`;
+  const cacheKey = `featured:v9:${limit}`;
+  const lastGoodKey = `featured:last-good:v1:${limit}`;
   const cached = await cacheGet(env, cacheKey);
   if (cached) return cached;
   const config = parseJson(env.FEATURED_CHANNELS_JSON, {});
@@ -1051,7 +1120,8 @@ export async function featured(env, limit = 20) {
   const fallbackResults = await Promise.allSettled([
     twitchLive(env, Math.min(40, Math.max(12, limit))),
     kickLive(env, Math.min(40, Math.max(12, limit))),
-    youtubeSearchVideos(env, { limit: Math.min(20, Math.max(8, limit)), live: true })
+    youtubeSearchVideos(env, { limit: Math.min(20, Math.max(8, limit)), live: true }),
+    env.SCRAPECREATORS_API_KEY ? searchRumbleChannels(env, 'live', Math.min(20, Math.max(8, limit))) : []
   ]);
   const liveFallback = fallbackResults.flatMap(result => result.status === 'fulfilled' ? result.value : []);
   const unique = new Map();
@@ -1061,16 +1131,38 @@ export async function featured(env, limit = 20) {
     const previous = unique.get(key);
     if (!previous || Number(item.viewers || 0) > Number(previous.viewers || 0)) unique.set(key, item);
   }
-  const ranked = [...unique.values()].sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0));
-  const mixed = [];
-  const platformsSeen = new Set();
-  for (const item of ranked) {
-    if (mixed.length < 6 && platformsSeen.size < 3 && platformsSeen.has(item.platform)) continue;
-    mixed.push(item);
-    platformsSeen.add(item.platform);
-    if (mixed.length >= limit) break;
+  let ranked = [...unique.values()].sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0));
+  const minimumHealthySize = Math.min(6, limit);
+  let reusedPrevious = false;
+  if (ranked.length < minimumHealthySize) {
+    const previous = await cacheGetStale(env, lastGoodKey, 300)
+      || await cacheGetStale(env, `featured:v8:${limit}`, 300);
+    if (Array.isArray(previous) && previous.length > ranked.length) {
+      for (const item of previous) {
+        if (!item?.live) continue;
+        const key = `${item.platform}:${String(item.username || item.name || '').toLowerCase()}`;
+        if (!unique.has(key)) unique.set(key, item);
+      }
+      ranked = [...unique.values()].sort((a, b) => Number(b.viewers || 0) - Number(a.viewers || 0));
+      reusedPrevious = true;
+    }
   }
-  for (const item of ranked) if (mixed.length < limit && !mixed.includes(item)) mixed.push(item);
+  const platformOrder = ['twitch', 'youtube', 'kick', 'rumble'];
+  const groups = new Map(platformOrder.map(platform => [platform, ranked.filter(item => item.platform === platform)]));
+  for (const item of ranked) if (!groups.has(item.platform)) groups.set(item.platform, ranked.filter(candidate => candidate.platform === item.platform));
+  const mixed = [];
+  while (mixed.length < limit) {
+    let added = false;
+    for (const group of groups.values()) {
+      const item = group.shift();
+      if (!item) continue;
+      mixed.push(item);
+      added = true;
+      if (mixed.length >= limit) break;
+    }
+    if (!added) break;
+  }
+  if (!reusedPrevious && mixed.length >= minimumHealthySize) await cachePut(env, lastGoodKey, mixed, 3600);
   return cachePut(env, cacheKey, mixed, 60);
 }
 
@@ -1200,7 +1292,11 @@ async function searchKickChannels(env, query, limit) {
 
 async function searchRumbleChannels(env, query, limit) {
   const payload = await creatorSearch(env, `/v1/rumble/search?query=${encodeURIComponent(query)}`);
-  const candidates = [...(payload.channels || []), ...(payload.lives || []), ...(payload.videos || []).map(item => item.channel || {})];
+  const candidates = [
+    ...(payload.channels || []).map(item => ({ ...item, _liveResult: false })),
+    ...(payload.lives || []).map(item => ({ ...item, _liveResult: true })),
+    ...(payload.videos || []).map(item => ({ ...(item.channel || {}), _liveResult: Boolean(item.live || item.is_live) }))
+  ];
   const unique = new Map();
   for (const item of candidates) {
     const username = item.handle || item.slug || item.username || item.name || '';
@@ -1209,8 +1305,8 @@ async function searchRumbleChannels(env, query, limit) {
     const viewerCount = availableNumber(item.viewers, item.watching_now, item.viewer_count);
     if (!unique.has(key)) unique.set(key, {
       platform: 'rumble', id: String(item.id || username), name: item.name || item.title || username, username,
-      avatar: item.thumbnail || item.avatar || '', banner: '', live: Boolean(item.live || item.is_live),
-      category: item.category || '', viewers: viewerCount, viewerCountAvailable: Boolean((item.live || item.is_live) && viewerCount !== null),
+      avatar: item.thumbnail || item.avatar || '', banner: '', live: Boolean(item._liveResult || item.live || item.is_live),
+      category: item.category || '', viewers: viewerCount, viewerCountAvailable: Boolean((item._liveResult || item.live || item.is_live) && viewerCount !== null),
       url: item.url || `https://rumble.com/c/${encodeURIComponent(username)}`
     });
   }
